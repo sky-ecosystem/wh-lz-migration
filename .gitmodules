@@ -1,0 +1,9 @@
+[submodule "lib/forge-std"]
+	path = lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "lib/dss-test"]
+	path = lib/dss-test
+	url = https://github.com/makerdao/dss-test
+[submodule "lib/sky-ntt-migration"]
+	path = lib/sky-ntt-migration
+	url = https://github.com/crocodiledundalk/sky-ntt-migration
