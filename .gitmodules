@@ -4,6 +4,3 @@
 [submodule "lib/dss-test"]
 	path = lib/dss-test
 	url = https://github.com/makerdao/dss-test
-[submodule "lib/sky-ntt-migration"]
-	path = lib/sky-ntt-migration
-	url = https://github.com/crocodiledundalk/sky-ntt-migration
