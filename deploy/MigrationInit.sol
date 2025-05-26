@@ -22,10 +22,12 @@ interface NttManagerLike {
     function chainId() external view returns (uint16);
     function rateLimitDuration() external view returns (uint64);
     function upgrade(address) external;
+    function pauseSend() external;
+    function migrateLockedTokens(address) external;
 }
 
 library MigrationInit {
-    function initMigration(
+    function initMigrationStep0(
         address nttManagerImpV2,
         address nttManager
     ) internal {
@@ -39,5 +41,18 @@ library MigrationInit {
         require(impV2.rateLimitDuration() == mgr.rateLimitDuration(), "MigrationInit/rl-dur-mismatch");
         
         mgr.upgrade(nttManagerImpV2);
+    }
+
+    function initMigrationStep1(
+        address nttManager
+    ) internal {
+        NttManagerLike(nttManager).pauseSend();
+    }
+
+    function initMigrationStep2(
+        address nttManager,
+        address oftAdapter
+    ) internal {
+        NttManagerLike(nttManager).migrateLockedTokens(oftAdapter);
     }
 }

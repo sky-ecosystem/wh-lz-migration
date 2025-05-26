@@ -26,17 +26,23 @@ interface ChainlogLike {
     function getAddress(bytes32) external view returns (address);
 }
 
+interface TokenLike {
+    function balanceOf(address) external view returns (uint256);
+} 
+
 contract MigrationTest is DssTest {
     ChainlogLike public chainlog = ChainlogLike(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
     NttManager   public nttManager = NttManager(0x7d4958454a3f520bDA8be764d06591B054B0bf33);
 
     address public pauseProxy;
+    address public usds;
     address public nttManagerImpV2;
     
     function setUp() public {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
 
         pauseProxy = chainlog.getAddress("MCD_PAUSE_PROXY");
+        usds       = chainlog.getAddress("USDS");
 
         nttManagerImpV2 = MigrationDeploy.deployMigration();
     }
@@ -46,9 +52,35 @@ contract MigrationTest is DssTest {
         vm.expectRevert(bytes(""));
         nttManager.migrateLockedTokens(address(this));
 
-        MigrationInit.initMigration(nttManagerImpV2, address(nttManager));
+        MigrationInit.initMigrationStep0(nttManagerImpV2, address(nttManager));
 
         nttManager.migrateLockedTokens(address(this));
         vm.stopPrank();
+    }
+
+    function testMigrationStep1() public {
+        vm.expectRevert(bytes(""));
+        nttManager.isSendPaused();
+
+        vm.startPrank(pauseProxy);
+        MigrationInit.initMigrationStep0(nttManagerImpV2, address(nttManager));
+        MigrationInit.initMigrationStep1(address(nttManager));
+        vm.stopPrank();
+
+        assertEq(nttManager.isSendPaused(), true);
+    }
+
+    function testMigrationStep2() public {
+        address oftAdapter = address(123);
+        uint256 escrowed = TokenLike(usds).balanceOf(address(nttManager));
+
+        vm.startPrank(pauseProxy);
+        MigrationInit.initMigrationStep0(nttManagerImpV2, address(nttManager));
+        MigrationInit.initMigrationStep1(address(nttManager));
+        MigrationInit.initMigrationStep2(address(nttManager), oftAdapter);
+        vm.stopPrank();
+
+        assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);
+        assertEq(TokenLike(usds).balanceOf(oftAdapter), escrowed);
     }
 }
