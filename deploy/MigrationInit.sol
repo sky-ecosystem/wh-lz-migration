@@ -66,15 +66,15 @@ library MigrationInit {
             NTT_PROGRAM_DATA_ADDR,      bytes2(0x0001), // WRITABLE
             NTT_PROGRAM_ID,             bytes2(0x0001), // WRITABLE
             buffer,                     bytes2(0x0001), // WRITABLE
-            bytes32("owner"),           bytes2(0x0001), // WRITABLE -- will be used as spill, should we instead use bytes32("payer") ?
+            bytes32("owner"),           bytes2(0x0001), // WRITABLE -- spill account, should we instead use bytes32("payer") ?
             SYSVAR_RENT_ADDR,           bytes2(0x0000), // READONLY
             SYSVAR_CLOCK_ADDR,          bytes2(0x0000), // READONLY
-            bytes32("owner"),           bytes2(0x0100)  // SIGNER
+            bytes32("owner"),           bytes2(0x0100)  // SIGNER   -- program's authority 
         );
 
         WormholeLike(WORMHOLE_CORE_BRIDGE).publishMessage({
             nonce: 0, 
-            payload: bytes.concat(
+            payload: bytes.concat( // see payload layout in lib/sky-ntt-migration/solana/programs/wormhole-governance/src/instructions/governance.rs
                 abi.encodePacked(
                     bytes8(0), "GeneralPurposeGovernance", // module, 32 bytes left-padded string
                     uint8(2),                              // action, 1 byte
