@@ -52,7 +52,7 @@ contract MigrationTest is DssTest {
         vm.expectRevert(bytes(""));
         nttManager.migrateLockedTokens(address(this));
 
-        MigrationInit.initMigrationStep0(nttManagerImpV2, address(nttManager));
+        MigrationInit.initMigrationStep0(nttManagerImpV2, address(nttManager), 0);
 
         nttManager.migrateLockedTokens(address(this));
         vm.stopPrank();
@@ -63,7 +63,7 @@ contract MigrationTest is DssTest {
         nttManager.isSendPaused();
 
         vm.startPrank(pauseProxy);
-        MigrationInit.initMigrationStep0(nttManagerImpV2, address(nttManager));
+        MigrationInit.initMigrationStep0(nttManagerImpV2, address(nttManager), 0);
         MigrationInit.initMigrationStep1(address(nttManager));
         vm.stopPrank();
 
@@ -75,7 +75,7 @@ contract MigrationTest is DssTest {
         uint256 escrowed = TokenLike(usds).balanceOf(address(nttManager));
 
         vm.startPrank(pauseProxy);
-        MigrationInit.initMigrationStep0(nttManagerImpV2, address(nttManager));
+        MigrationInit.initMigrationStep0(nttManagerImpV2, address(nttManager), 0);
         MigrationInit.initMigrationStep1(address(nttManager));
         MigrationInit.initMigrationStep2(address(nttManager), oftAdapter);
         vm.stopPrank();
