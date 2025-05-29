@@ -32,7 +32,6 @@ interface WormholeLike {
 }
 
 library MigrationInit {
-
     address constant WORMHOLE_CORE_BRIDGE = 0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B;
 
     // python3 -c "import base58; print(base58.b58decode('BPFLoaderUpgradeab1e11111111111111111111111').hex())"
@@ -47,6 +46,11 @@ library MigrationInit {
     bytes32 constant NTT_PROGRAM_ID                   = 0x06856f43abf4aaa4a26b32ae8ea4cb8fadc8e02d267703fbd5f9dad85f6d00b3;
     // solana program show STTUVCMPuNbk21y1J6nqEGXSQ8HKvFmFBKnCvKHTrWn | grep 'ProgramData Address:' | awk '{print $3}' | xargs -I{} python3 -c "import base58; print(base58.b58decode('{}').hex())"
     bytes32 constant NTT_PROGRAM_DATA_ADDR            = 0xa821ac5164fa9b54fd93b54dba8215550b8fce868f52299169f6619867cac501;
+
+    // Solana account metas
+    bytes2 constant READONLY = bytes2(0x0000);
+    bytes2 constant WRITABLE = bytes2(0x0001);
+    bytes2 constant SIGNER   = bytes2(0x0100);
 
     function _upgradeEthNtt(address nttManagerImpV2, address nttManager) internal {
         NttManagerLike mgr   = NttManagerLike(nttManager);
@@ -64,13 +68,13 @@ library MigrationInit {
     function _upgradeSolNtt(bytes32 buffer) internal {
         // See https://github.com/solana-labs/solana/blob/7700cb3128c1f19820de67b81aa45d18f73d2ac0/sdk/program/src/loader_upgradeable_instruction.rs#L84
         bytes memory  accounts = abi.encodePacked(
-            NTT_PROGRAM_DATA_ADDR,      bytes2(0x0001), // WRITABLE
-            NTT_PROGRAM_ID,             bytes2(0x0001), // WRITABLE
-            buffer,                     bytes2(0x0001), // WRITABLE
-            bytes32("owner"),           bytes2(0x0001), // WRITABLE -- spill account, should we instead use bytes32("payer") ?
-            SYSVAR_RENT_ADDR,           bytes2(0x0000), // READONLY
-            SYSVAR_CLOCK_ADDR,          bytes2(0x0000), // READONLY
-            bytes32("owner"),           bytes2(0x0100)  // SIGNER   -- program's authority 
+            NTT_PROGRAM_DATA_ADDR, WRITABLE,
+            NTT_PROGRAM_ID,        WRITABLE,
+            buffer,                WRITABLE,
+            bytes32("owner"),      WRITABLE, // spill account (should we instead use bytes32("payer") ?)
+            SYSVAR_RENT_ADDR,      READONLY,
+            SYSVAR_CLOCK_ADDR,     READONLY,
+            bytes32("owner"),      SIGNER    // program's authority 
         );
 
         uint256 fee = WormholeLike(WORMHOLE_CORE_BRIDGE).messageFee();
