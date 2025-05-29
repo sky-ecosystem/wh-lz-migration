@@ -78,6 +78,7 @@ library MigrationInit {
                     bytes8(0), "GeneralPurposeGovernance", // module, 32 bytes left-padded string
                     uint8(2),                              // action, 1 byte
                     uint16(1),                             // chainId, 2 bytes
+                    GOVERNANCE_PROGRAM_ID,                 // governanceProgramId, 32 bytes
                     BFT_LOADER_UPGRADABLE_ADDR,            // programId, 32 bytes
                     uint16(7)                              // accountsLength, 2 bytes
                 ),
