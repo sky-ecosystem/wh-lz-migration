@@ -27,6 +27,7 @@ interface NttManagerLike {
 }
 
 interface WormholeLike {
+    function messageFee() external view returns (uint256);
     function publishMessage(uint32 nonce, bytes memory payload, uint8 consistencyLevel) external payable returns (uint64);
 }
 
@@ -72,7 +73,8 @@ library MigrationInit {
             bytes32("owner"),           bytes2(0x0100)  // SIGNER   -- program's authority 
         );
 
-        WormholeLike(WORMHOLE_CORE_BRIDGE).publishMessage({
+        uint256 fee = WormholeLike(WORMHOLE_CORE_BRIDGE).messageFee();
+        WormholeLike(WORMHOLE_CORE_BRIDGE).publishMessage{value: fee}({
             nonce: 0, 
             payload: bytes.concat( // see payload layout in lib/sky-ntt-migration/solana/programs/wormhole-governance/src/instructions/governance.rs
                 abi.encodePacked(
@@ -89,7 +91,7 @@ library MigrationInit {
                     bytes1(0x03)                           // data; "Upgrade" instruction as per loader_upgradeable_instruction.rs
                 )
             ), 
-            consistencyLevel: 202 // "Finalized" (~19 minutes)
+            consistencyLevel: 202 // "Finalized" (~19 minutes - see https://wormhole.com/docs/build/reference/consistency-levels/)
         });
     }
 
