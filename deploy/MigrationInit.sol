@@ -61,7 +61,7 @@ library MigrationInit {
     }
 
     function _upgradeSolNtt(bytes32 buffer) internal {
-        bytes memory accounts = abi.encodePacked(
+        bytes memory  accounts = abi.encodePacked(
             NTT_PROGRAM_DATA_ADDR,      bytes2(0x0001), // WRITABLE
             NTT_PROGRAM_ID,             bytes2(0x0001), // WRITABLE
             buffer,                     bytes2(0x0001), // WRITABLE
@@ -73,15 +73,19 @@ library MigrationInit {
 
         WormholeLike(WORMHOLE_CORE_BRIDGE).publishMessage({
             nonce: 0, 
-            payload: abi.encodePacked(
-                bytes8(0), "GeneralPurposeGovernance", // module, 32 bytes left-padded string
-                uint8(2),                              // action, 1 byte
-                uint16(1),                             // chainId, 2 bytes
-                BFT_LOADER_UPGRADABLE_ADDR,            // programId, 32 bytes
-                uint16(7),                             // accountsLength, 2 bytes
-                accounts,                              // accounts, (32+2)*7 bytes
-                uint16(1),                             // dataLength, 2 bytes
-                bytes1(0x03)                           // data; "Upgrade" instruction
+            payload: bytes.concat(
+                abi.encodePacked(
+                    bytes8(0), "GeneralPurposeGovernance", // module, 32 bytes left-padded string
+                    uint8(2),                              // action, 1 byte
+                    uint16(1),                             // chainId, 2 bytes
+                    BFT_LOADER_UPGRADABLE_ADDR,            // programId, 32 bytes
+                    uint16(7)                              // accountsLength, 2 bytes
+                ),
+                accounts,                                  // accounts (32+2)*7 bytes
+                abi.encodePacked(                          
+                    uint16(1),                             // dataLength, 2 bytes
+                    bytes1(0x03)                           // data; "Upgrade" instruction
+                )
             ), 
             consistencyLevel: 202 // "Finalized" (~19 minutes)
         });
