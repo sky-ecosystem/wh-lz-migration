@@ -61,6 +61,7 @@ library MigrationInit {
     }
 
     function _upgradeSolNtt(bytes32 buffer) internal {
+        // See https://github.com/solana-labs/solana/blob/7700cb3128c1f19820de67b81aa45d18f73d2ac0/sdk/program/src/loader_upgradeable_instruction.rs#L84
         bytes memory  accounts = abi.encodePacked(
             NTT_PROGRAM_DATA_ADDR,      bytes2(0x0001), // WRITABLE
             NTT_PROGRAM_ID,             bytes2(0x0001), // WRITABLE
@@ -85,7 +86,7 @@ library MigrationInit {
                 accounts,                                  // accounts (32+2)*7 bytes
                 abi.encodePacked(                          
                     uint16(1),                             // dataLength, 2 bytes
-                    bytes1(0x03)                           // data; "Upgrade" instruction
+                    bytes1(0x03)                           // data; "Upgrade" instruction as per loader_upgradeable_instruction.rs
                 )
             ), 
             consistencyLevel: 202 // "Finalized" (~19 minutes)
