@@ -47,8 +47,17 @@ library MigrationInit {
     bytes32 constant NTT_PROGRAM_ID             = 0x06856f43abf4aaa4a26b32ae8ea4cb8fadc8e02d267703fbd5f9dad85f6d00b3;
     // solana program show STTUVCMPuNbk21y1J6nqEGXSQ8HKvFmFBKnCvKHTrWn | grep 'ProgramData Address:' | awk '{print $3}' | xargs -I{} python3 -c "import base58; print(base58.b58decode('{}').hex())"
     bytes32 constant NTT_PROGRAM_DATA_ADDR      = 0xa821ac5164fa9b54fd93b54dba8215550b8fce868f52299169f6619867cac501;
-    // python3 -c "import base58; print(base58.b58decode('DCWd3ygRyr9qESyRfPRCMQ6o1wAsPu2niPUc48ixWeY9').hex())"
-    bytes32 constant NTT_CONFIG_ADDR            = 0xb53f200f8db357f9e1e982ef0ec4b3b879f9f6516d5247307ebaf00d187be51a;
+    // python3 -c "import base58; print(base58.b58decode('DCWd3ygRyr9qESyRfPRCMQ6o1wAsPu2niPUc48ixWeY9').hex())" # PDA derived from seed "config" and the NTT program ID
+    bytes32 constant NTT_CONFIG_PDA             = 0xb53f200f8db357f9e1e982ef0ec4b3b879f9f6516d5247307ebaf00d187be51a;
+    // python3 -c "import base58; print(base58.b58decode('Bjui9tuxKGsiF5FDwosfUsRUXg9RZCKidbThfm6CRtRt').hex())" # PDA derived from seed "token_authority" and the NTT program ID
+    bytes32 constant NTT_TOKEN_AUTHORITY_PDA    = 0x9f92dcb365df21a4a4ec23d8ff4cc020cdd09895f8129c2c2fb43289bc53f95f;
+    // python3 -c "import base58; print(base58.b58decode('USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA').hex())"
+    bytes32 constant USDS_MINT_ADDR             = 0x0707312d1d41da71f0fb280c1662cd65ebeb2e0859c0cbae3fdbdcb26c86e0af;
+    // python3 -c "import base58; print(base58.b58decode('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').hex())"
+    bytes32 constant SPL_TOKEN_PROGRAM_ID       = 0x06ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a9;
+    // python3 -c "import base58; print(base58.b58decode('4CVeJ5oZPL77ewm9DdjEEnh6vLSWKvcPhzgvhpKcZRuL').hex())" # ATA derived from USDS (mint) and token_authority PDA (owner)
+    bytes32 constant CUSTODY_ATA                = 0x2f84d6207230f62740d15c068bc819bb107ebcb144b0c9fdd53de27b1814d36b;
+
 
     // Solana account metas
     bytes2 constant READONLY = bytes2(0x0000);
@@ -114,11 +123,33 @@ library MigrationInit {
             programId: NTT_PROGRAM_ID, 
             accounts: abi.encodePacked( // See lib/sky-ntt-migration/solana/programs/native-token-transfers/src/instructions/admin.rs#L266
                 bytes32("owner"), SIGNER,
-                NTT_CONFIG_ADDR,  WRITABLE
+                NTT_CONFIG_PDA,   WRITABLE
             ),
             data: abi.encodePacked(
                 bytes8(sha256("global:set_paused")),  // Anchor discriminator for "SetPaused" instruction
                 bytes1(0x01)                          // paused = true
+            )
+        });
+    }
+
+    function _migrateLockedTokens(address oftAdapter) internal {
+        NttManagerLike(NTT_MANAGER).migrateLockedTokens(oftAdapter);
+    }
+
+    function _transferMintAuthority(bytes32 newMintAuthority) internal {
+        _publishWormholeMessage({
+            programId: NTT_PROGRAM_ID,
+            accounts: abi.encodePacked( // See lib/sky-ntt-migration/solana/programs/native-token-transfers/src/instructions/transfer_mint_authority.rs#L10
+                bytes32("owner"),        WRITABLE | SIGNER,   // payer
+                NTT_CONFIG_PDA,          READONLY,            // config
+                NTT_TOKEN_AUTHORITY_PDA, READONLY,            // token_authority
+                USDS_MINT_ADDR,          WRITABLE,            // mint
+                SPL_TOKEN_PROGRAM_ID,    READONLY,            // token_program
+                CUSTODY_ATA,             WRITABLE             // custody
+            ),
+            data: abi.encodePacked(
+                bytes8(sha256("global:transfer_mint_authority")),
+                newMintAuthority 
             )
         });
     }
@@ -137,8 +168,10 @@ library MigrationInit {
     }
 
     function initMigrationStep2(
-        address oftAdapter
+        address oftAdapter,
+        bytes32 newMintAuthority
     ) internal {
-        NttManagerLike(NTT_MANAGER).migrateLockedTokens(oftAdapter);
+        _migrateLockedTokens(oftAdapter);
+        _transferMintAuthority(newMintAuthority);
     }
 }

@@ -77,7 +77,7 @@ contract MigrationTest is DssTest {
         vm.startPrank(pauseProxy);
         MigrationInit.initMigrationStep0(nttManagerImpV2, 0);
         MigrationInit.initMigrationStep1();
-        MigrationInit.initMigrationStep2(oftAdapter);
+        MigrationInit.initMigrationStep2(oftAdapter, 0);
         vm.stopPrank();
 
         assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);
