@@ -253,15 +253,15 @@ library MigrationInit {
 
     function _activateSolLZBridge(uint128 gasLimit, uint16 chainId, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
         _publishLZMessage({
-            gasLimit: gasLimit,
-            chainId: chainId,
-            govOapp: govOapp,
+            gasLimit:  gasLimit,
+            chainId:   chainId,
+            govOapp:   govOapp,
             programId: oftProgramId,
-            accounts: abi.encodePacked(
+            accounts:  abi.encodePacked(
                 bytes32("cpi_authority"), SIGNER,
                 oftStore,                 WRITABLE
             ),
-            data: abi.encodePacked(
+            data:      abi.encodePacked(
                 bytes8(sha256("global:set_oft_config")), // Anchor discriminator for "SetOftConfig" instruction
                 bytes1(0x03),                            // enum variant tag for Paused
                 bytes1(0x00)                             // paused = false
