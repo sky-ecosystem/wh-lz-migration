@@ -28,7 +28,35 @@ interface ChainlogLike {
 
 interface TokenLike {
     function balanceOf(address) external view returns (uint256);
-} 
+}
+
+contract OFTAdapterMock{
+    address public owner = msg.sender;
+    address public token;
+    address public endpoint = 0x1a44076050125825900e736c501f859c50fE728c; // LZ Ethereum EndpointV2
+    constructor(address _token) {
+        token = _token;
+    }
+    function unpause() external {}
+}
+
+contract GovOappMock{
+    struct MessagingFee {
+        uint256 nativeFee;
+        uint256 lzTokenFee;
+    }
+    function sendRawBytesAction(
+        bytes calldata message,
+        bytes calldata extraOptions,
+        MessagingFee calldata fee,
+        address refundAddress
+    ) external payable {}
+    function quoteRawBytesAction(
+        bytes calldata message,
+        bytes calldata extraOptions,
+        bool payInLzToken
+    ) external view returns (MessagingFee memory fee) {}
+}
 
 contract MigrationTest is DssTest {
     ChainlogLike public chainlog = ChainlogLike(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
@@ -71,13 +99,13 @@ contract MigrationTest is DssTest {
     }
 
     function testMigrationStep2() public {
-        address oftAdapter = address(123);
         uint256 escrowed = TokenLike(usds).balanceOf(address(nttManager));
 
         vm.startPrank(pauseProxy);
+        address oftAdapter = address(new OFTAdapterMock(usds));
         MigrationInit.initMigrationStep0(nttManagerImpV2, 0);
         MigrationInit.initMigrationStep1();
-        MigrationInit.initMigrationStep2(oftAdapter, 0);
+        MigrationInit.initMigrationStep2(oftAdapter, 0, 0, address(new GovOappMock()), 0, 0);  
         vm.stopPrank();
 
         assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);

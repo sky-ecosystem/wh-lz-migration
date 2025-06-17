@@ -16,6 +16,10 @@
 
 pragma solidity >=0.8.0;
 
+interface ChainlogLike {
+    function getAddress(bytes32) external view returns (address);
+}
+
 interface NttManagerLike {
     function token() external view returns (address);
     function mode() external view returns (uint8);
@@ -31,9 +35,38 @@ interface WormholeLike {
     function publishMessage(uint32 nonce, bytes memory payload, uint8 consistencyLevel) external payable returns (uint64);
 }
 
+interface OFTAdapterLike {
+    function token() external view returns (address);
+    function owner() external view returns (address);
+    function endpoint() external view returns (address);
+    function unpause() external;
+}
+
+interface GovOappLike {
+    struct MessagingFee {
+        uint256 nativeFee;
+        uint256 lzTokenFee;
+    }
+    function quoteRawBytesAction(
+        bytes calldata message,
+        bytes calldata extraOptions,
+        bool payInLzToken
+    ) external view returns (MessagingFee memory fee);
+    function sendRawBytesAction(
+        bytes calldata message,
+        bytes calldata extraOptions,
+        MessagingFee calldata fee,
+        address refundAddress
+    ) external payable;
+}
+
+
 library MigrationInit {
+    ChainlogLike constant LOG = ChainlogLike(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
+
     address constant WORMHOLE_CORE_BRIDGE = 0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B;
     address constant NTT_MANAGER          = 0x7d4958454a3f520bDA8be764d06591B054B0bf33;
+    address constant ETH_LZ_ENDPOINT      = 0x1a44076050125825900e736c501f859c50fE728c;
 
     // python3 -c "import base58; print(base58.b58decode('BPFLoaderUpgradeab1e11111111111111111111111').hex())"
     bytes32 constant BFT_LOADER_UPGRADABLE_ADDR = 0x02a8f6914e88a1b0e210153ef763ae2b00c2b93d16c124d2c0537a1004800000;
@@ -41,6 +74,7 @@ library MigrationInit {
     bytes32 constant SYSVAR_CLOCK_ADDR          = 0x06a7d51718c774c928566398691d5eb68b5eb8a39b4b6d5c73555b2100000000;
     // python3 -c "import base58; print(base58.b58decode('SysvarRent111111111111111111111111111111111').hex())"
     bytes32 constant SYSVAR_RENT_ADDR           = 0x06a7d517192c5c51218cc94c3d4af17f58daee089ba1fd44e3dbd98a00000000;
+
     // python3 -c "import base58; print(base58.b58decode('SCCGgsntaUPmP6UjwUBNiQQ83ys5fnCHdFASHPV6Fm9').hex())"
     bytes32 constant GOVERNANCE_PROGRAM_ID      = 0x06742d7ca523a03aaafe48abab02e47eb8aef53415cb603c47a3ccf864d86dc0;
     // python3 -c "import base58; print(base58.b58decode('STTUVCMPuNbk21y1J6nqEGXSQ8HKvFmFBKnCvKHTrWn').hex())"
@@ -58,22 +92,21 @@ library MigrationInit {
     // python3 -c "import base58; print(base58.b58decode('4CVeJ5oZPL77ewm9DdjEEnh6vLSWKvcPhzgvhpKcZRuL').hex())" # ATA derived from USDS (mint) and token_authority PDA (owner)
     bytes32 constant CUSTODY_ATA                = 0x2f84d6207230f62740d15c068bc819bb107ebcb144b0c9fdd53de27b1814d36b;
 
-
     // Solana account metas
     bytes2 constant READONLY = bytes2(0x0000);
     bytes2 constant WRITABLE = bytes2(0x0001);
     bytes2 constant SIGNER   = bytes2(0x0100);
 
-    function _publishWormholeMessage(bytes32 programId, bytes memory accounts, bytes memory data) internal {
-        uint256 fee = WormholeLike(WORMHOLE_CORE_BRIDGE).messageFee();
-        WormholeLike(WORMHOLE_CORE_BRIDGE).publishMessage{value: fee}({
+    function _publishWHMessage(address wormhole, bytes32 govProgramId, bytes32 programId, bytes memory accounts, bytes memory data) internal {
+        uint256 fee = WormholeLike(wormhole).messageFee();
+        WormholeLike(wormhole).publishMessage{value: fee}({
             nonce: 0, 
             payload: bytes.concat( // see payload layout in lib/sky-ntt-migration/solana/programs/wormhole-governance/src/instructions/governance.rs
                 abi.encodePacked(
                     bytes8(0), "GeneralPurposeGovernance", // module, 32 bytes left-padded string
                     uint8(2),                              // action, 1 byte
                     uint16(1),                             // chainId, 2 bytes
-                    GOVERNANCE_PROGRAM_ID,                 // governanceProgramId, 32 bytes
+                    govProgramId,                          // governanceProgramId, 32 bytes
                     programId,                             // programId, 32 bytes
                     uint16(accounts.length / 34)           // accountsLength, 2 bytes
                 ),
@@ -85,8 +118,45 @@ library MigrationInit {
         });
     }
 
-    function _upgradeEthNtt(address nttManagerImpV2) internal {
-        NttManagerLike mgr   = NttManagerLike(NTT_MANAGER);
+    function _publishLZMessage(uint128 gasLimit, uint16 chainId, address govOapp, bytes32 programId, bytes memory accounts, bytes memory data) internal {
+        bytes memory extraOptions = abi.encodePacked( // see addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol
+            abi.encodePacked(uint16(3)), // Option TYPE_3
+            uint8(1),                    // ExecutorOptions.WORKER_ID
+            uint16(17),                  // (abi.encodePacked(gasLimit)).length.toUint16() + 1
+            uint8(1),                    // ExecutorOptions.OPTION_TYPE_LZRECEIVE
+            abi.encodePacked(gasLimit)   // ExecutorOptions.encodeLzReceiveOption(gasLimit, 0)
+        );
+
+        bytes memory message = bytes.concat(
+            abi.encodePacked(
+                uint8(2),                                 // action, 1 byte
+                chainId,                                  // chainId, 2 bytes (30168 for Solana mainnet; 40168 for Solana testnet)
+                bytes32(uint256(uint160(address(this)))), // originCaller, 32 bytes
+                programId,                                // programId, 32 bytes
+                uint16(accounts.length / 34)              // accountsLength, 2 bytes
+            ),
+            accounts,                                     // accounts (32+2)*accountsLength bytes                    
+            abi.encodePacked(uint16(data.length)),        // dataLength, 2 bytes
+            data                                          // data
+        );
+
+        // TODO: Decide if we prefer to get this fee off-chain
+        GovOappLike.MessagingFee memory fee = GovOappLike(govOapp).quoteRawBytesAction({
+            message: message,
+            extraOptions: extraOptions,
+            payInLzToken: false
+        });
+
+        GovOappLike(govOapp).sendRawBytesAction{value: fee.nativeFee}({
+            message: message,
+            extraOptions: extraOptions,
+            fee: fee,
+            refundAddress: address(this)
+        });
+    }
+
+    function _upgradeEthNtt(address nttManagerImpV2, address nttManager) internal {
+        NttManagerLike mgr   = NttManagerLike(nttManager);
         NttManagerLike impV2 = NttManagerLike(nttManagerImpV2);
 
         // Sanity checks
@@ -98,48 +168,71 @@ library MigrationInit {
         mgr.upgrade(nttManagerImpV2);
     }
 
-    function _upgradeSolNtt(bytes32 buffer) internal {
-        _publishWormholeMessage({
-            programId: BFT_LOADER_UPGRADABLE_ADDR, 
-            accounts: abi.encodePacked( // See https://github.com/solana-labs/solana/blob/7700cb3128c1f19820de67b81aa45d18f73d2ac0/sdk/program/src/loader_upgradeable_instruction.rs#L84
-                NTT_PROGRAM_DATA_ADDR, WRITABLE,
-                NTT_PROGRAM_ID,        WRITABLE,
-                buffer,                WRITABLE,
-                bytes32("owner"),      WRITABLE, // spill account (should we instead use bytes32("payer") ?)
-                SYSVAR_RENT_ADDR,      READONLY,
-                SYSVAR_CLOCK_ADDR,     READONLY,
-                bytes32("owner"),      SIGNER    // program's authority 
+    function _upgradeSolNtt(address wormhole, bytes32 govProgramId, bytes32 nttProgramDataAddr, bytes32 nttProgramId, bytes32 buffer) internal {
+        _publishWHMessage({
+            wormhole:     wormhole,
+            govProgramId: govProgramId,
+            programId:    BFT_LOADER_UPGRADABLE_ADDR, 
+            accounts:     abi.encodePacked( // See https://github.com/solana-labs/solana/blob/7700cb3128c1f19820de67b81aa45d18f73d2ac0/sdk/program/src/loader_upgradeable_instruction.rs#L84
+                nttProgramDataAddr, WRITABLE,
+                nttProgramId,       WRITABLE,
+                buffer,             WRITABLE,
+                bytes32("owner"),   WRITABLE, // spill account (should we instead use bytes32("payer") ?)
+                SYSVAR_RENT_ADDR,   READONLY,
+                SYSVAR_CLOCK_ADDR,  READONLY,
+                bytes32("owner"),   SIGNER    // program's authority 
             ), 
-            data: hex"03" // "Upgrade" instruction as per loader_upgradeable_instruction.rs
+            data:         hex"03" // "Upgrade" instruction as per loader_upgradeable_instruction.rs
         });
     }
 
-    function _pauseEthNttBridge() internal {
-        NttManagerLike(NTT_MANAGER).pauseSend();
+    function _pauseEthNttBridge(address nttManager) internal {
+        NttManagerLike(nttManager).pauseSend();
     }
 
-    function _pauseSolNttBridge() internal {
-        _publishWormholeMessage({
-            programId: NTT_PROGRAM_ID, 
-            accounts: abi.encodePacked( // See lib/sky-ntt-migration/solana/programs/native-token-transfers/src/instructions/admin.rs#L266
-                bytes32("owner"), SIGNER,
-                NTT_CONFIG_PDA,   WRITABLE
+    function _pauseSolNttBridge(
+        address wormhole,
+        bytes32 govProgramId,
+        bytes32 nttProgramId,
+        bytes32 nttConfigPda
+    ) internal {
+        _publishWHMessage({
+            wormhole:     wormhole,
+            govProgramId: govProgramId,
+            programId:    nttProgramId, 
+            accounts:     abi.encodePacked( // See lib/sky-ntt-migration/solana/programs/native-token-transfers/src/instructions/admin.rs#L266
+                bytes32("owner"), SIGNER,   // owner
+                nttConfigPda,     WRITABLE  // config
             ),
-            data: abi.encodePacked(
+            data:         abi.encodePacked(
                 bytes8(sha256("global:set_paused")),  // Anchor discriminator for "SetPaused" instruction
                 bytes1(0x01)                          // paused = true
             )
         });
     }
 
-    function _migrateLockedTokens(address oftAdapter) internal {
+    function _migrateLockedTokens(address oftAdapter, address token, address owner, address endpoint) internal {
+        OFTAdapterLike oft = OFTAdapterLike(oftAdapter);
+
+        // Sanity checks -- TODO: check defaultFeeBps, feeBps, RL AccountingType, out/in RL for list of eids
+        require(oft.token()    == token,    "MigrationInit/token-mismatch");
+        require(oft.owner()    == owner,    "MigrationInit/owner-mismatch");
+        require(oft.endpoint() == endpoint, "MigrationInit/endpoint-mismatch");
+
         NttManagerLike(NTT_MANAGER).migrateLockedTokens(oftAdapter);
     }
 
-    function _transferMintAuthority(bytes32 newMintAuthority) internal {
-        _publishWormholeMessage({
-            programId: NTT_PROGRAM_ID,
-            accounts: abi.encodePacked( // See lib/sky-ntt-migration/solana/programs/native-token-transfers/src/instructions/transfer_mint_authority.rs#L10
+    function _transferMintAuthority(
+        address wormhole,
+        bytes32 govProgramId,
+        bytes32 nttProgramId,
+        bytes32 newMintAuthority
+    ) internal {
+        _publishWHMessage({
+            wormhole:     wormhole,
+            govProgramId: govProgramId,
+            programId:    nttProgramId, 
+            accounts:     abi.encodePacked( // See lib/sky-ntt-migration/solana/programs/native-token-transfers/src/instructions/transfer_mint_authority.rs#L10
                 bytes32("owner"),        WRITABLE | SIGNER,   // payer
                 NTT_CONFIG_PDA,          READONLY,            // config
                 NTT_TOKEN_AUTHORITY_PDA, READONLY,            // token_authority
@@ -147,31 +240,137 @@ library MigrationInit {
                 SPL_TOKEN_PROGRAM_ID,    READONLY,            // token_program
                 CUSTODY_ATA,             WRITABLE             // custody
             ),
-            data: abi.encodePacked(
+            data:         abi.encodePacked(
                 bytes8(sha256("global:transfer_mint_authority")),
                 newMintAuthority 
             )
         });
     }
 
+    function _activateEthLZBridge(address oftAdapter) internal {
+        OFTAdapterLike(oftAdapter).unpause();
+    }
+
+    function _activateSolLZBridge(uint128 gasLimit, uint16 chainId, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
+        _publishLZMessage({
+            gasLimit: gasLimit,
+            chainId: chainId,
+            govOapp: govOapp,
+            programId: oftProgramId,
+            accounts: abi.encodePacked(
+                bytes32("cpi_authority"), SIGNER,
+                oftStore,                 WRITABLE
+            ),
+            data: abi.encodePacked(
+                bytes8(sha256("global:set_oft_config")), // Anchor discriminator for "SetOftConfig" instruction
+                bytes1(0x03),                            // enum variant tag for Paused
+                bytes1(0x00)                             // paused = false
+            )
+        });
+    }
+
+    function initMigrationStep0(
+        address nttManagerImpV2,
+        bytes32 nttManagerImpV2SolBuffer,
+        address nttManager,
+        bytes32 nttProgramDataAddr, 
+        bytes32 nttProgramId,
+        bytes32 govProgramId,
+        address wormhole
+    ) internal {
+        _upgradeEthNtt(nttManagerImpV2, nttManager);
+        _upgradeSolNtt(wormhole, govProgramId, nttProgramDataAddr, nttProgramId, nttManagerImpV2SolBuffer);
+    }
+
     function initMigrationStep0(
         address nttManagerImpV2,
         bytes32 nttManagerImpV2SolBuffer
     ) internal {
-        _upgradeEthNtt(nttManagerImpV2);
-        _upgradeSolNtt(nttManagerImpV2SolBuffer);
+        initMigrationStep0(
+            nttManagerImpV2,
+            nttManagerImpV2SolBuffer,
+            NTT_MANAGER,
+            NTT_PROGRAM_DATA_ADDR,
+            NTT_PROGRAM_ID,
+            GOVERNANCE_PROGRAM_ID,
+            WORMHOLE_CORE_BRIDGE
+        );
+    }
+
+    function initMigrationStep1(
+        address nttManager,
+        bytes32 nttConfigPda,
+        bytes32 nttProgramId,
+        bytes32 govProgramId,
+        address wormhole
+    ) internal {
+        _pauseEthNttBridge(nttManager);
+        _pauseSolNttBridge(
+            wormhole,
+            govProgramId,
+            nttProgramId,
+            nttConfigPda
+        );
     }
 
     function initMigrationStep1() internal {
-        _pauseEthNttBridge();
-        _pauseSolNttBridge();
+        initMigrationStep1(
+            NTT_MANAGER,
+            NTT_CONFIG_PDA,
+            NTT_PROGRAM_ID,
+            GOVERNANCE_PROGRAM_ID,
+            WORMHOLE_CORE_BRIDGE
+        );
     }
 
     function initMigrationStep2(
         address oftAdapter,
-        bytes32 newMintAuthority
+        bytes32 newMintAuthority,
+        uint128 gasLimit,
+        address govOapp, 
+        bytes32 oftStore, 
+        bytes32 oftProgramId,
+        bytes32 nttProgramId,
+        bytes32 govProgramId,
+        address wormhole,
+        address token,
+        address owner,
+        address endpoint,
+        uint16 chainId
     ) internal {
-        _migrateLockedTokens(oftAdapter);
-        _transferMintAuthority(newMintAuthority);
+        _migrateLockedTokens(oftAdapter, token, owner, endpoint);
+        _transferMintAuthority(
+            wormhole,
+            govProgramId,
+            nttProgramId,
+            newMintAuthority
+        );
+        _activateEthLZBridge(oftAdapter);
+        _activateSolLZBridge(gasLimit, chainId, govOapp, oftStore, oftProgramId);
+    }
+
+    function initMigrationStep2(
+        address oftAdapter,
+        bytes32 newMintAuthority,
+        uint128 gasLimit,
+        address govOapp, 
+        bytes32 oftStore, 
+        bytes32 oftProgramId
+    ) internal {
+        initMigrationStep2(
+            oftAdapter,
+            newMintAuthority,
+            gasLimit,
+            govOapp,
+            oftStore,
+            oftProgramId,
+            NTT_PROGRAM_ID,
+            GOVERNANCE_PROGRAM_ID,
+            WORMHOLE_CORE_BRIDGE,
+            LOG.getAddress("USDS"),
+            LOG.getAddress("MCD_PAUSE_PROXY"),
+            ETH_LZ_ENDPOINT,
+            30168
+        );
     }
 }
