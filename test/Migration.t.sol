@@ -31,13 +31,22 @@ interface TokenLike {
 }
 
 contract OFTAdapterMock{
+    struct FeeConfig {
+        uint16 bps;
+        bool enabled;
+    }
     address public owner = msg.sender;
     address public token;
     address public endpoint = 0x1a44076050125825900e736c501f859c50fE728c; // LZ Ethereum EndpointV2
+    uint16 public defaultFeeBps;
+    bool public paused = true;
+    mapping(uint32 => FeeConfig) public feeBps;
     constructor(address _token) {
         token = _token;
     }
-    function unpause() external {}
+    function unpause() external {
+        paused = false;
+    }
 }
 
 contract GovOappMock{
@@ -103,11 +112,14 @@ contract MigrationTest is DssTest {
 
         vm.startPrank(pauseProxy);
         address oftAdapter = address(new OFTAdapterMock(usds));
+        assertTrue(OFTAdapterMock(oftAdapter).paused());
+
         MigrationInit.initMigrationStep0(nttManagerImpV2, 0);
         MigrationInit.initMigrationStep1();
         MigrationInit.initMigrationStep2(oftAdapter, 0, 0, address(new GovOappMock()), 0, 0);  
         vm.stopPrank();
 
+        assertFalse(OFTAdapterMock(oftAdapter).paused());
         assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);
         assertEq(TokenLike(usds).balanceOf(oftAdapter), escrowed);
     }
