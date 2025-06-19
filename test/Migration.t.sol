@@ -23,20 +23,28 @@ import { MigrationInit } from "deploy/MigrationInit.sol";
 import { NttManager } from "lib/sky-ntt-migration/evm/src/NttManager/NttManager.sol";
 import { OFTAdapter } from "lib/sky-oapp-oft/contracts/OFTAdapter.sol";
 import { GovernanceControllerOApp } from "lib/sky-oapp-gov/contracts/GovernanceControllerOApp.sol";
-import { IOAppCore } from "lib/sky-oapp-gov/node_modules/@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
-import { SetConfigParam, IMessageLibManager } from "lib/sky-oapp-gov/node_modules/@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
-import { UlnConfig } from "lib/sky-oapp-gov/node_modules/@layerzerolabs/lz-evm-messagelib-v2/contracts/uln/UlnBase.sol";
-import { ExecutorConfig } from "lib/sky-oapp-gov/node_modules/@layerzerolabs/lz-evm-messagelib-v2/contracts/SendLibBase.sol";
+
+import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
+import { SendParam, MessagingFee } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import { SetConfigParam, IMessageLibManager } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
+import { UlnConfig } from "@layerzerolabs/lz-evm-messagelib-v2/contracts/uln/UlnBase.sol";
+import { ExecutorConfig } from "@layerzerolabs/lz-evm-messagelib-v2/contracts/SendLibBase.sol";
+import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
+import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
+
 
 interface ChainlogLike {
     function getAddress(bytes32) external view returns (address);
 }
 
 interface TokenLike {
+    function approve(address, uint256) external;
     function balanceOf(address) external view returns (uint256);
 }
 
 contract MigrationTest is DssTest {
+    using OptionsBuilder for bytes;
+
     ChainlogLike public chainlog = ChainlogLike(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
     NttManager   public nttManager = NttManager(0x7d4958454a3f520bDA8be764d06591B054B0bf33);
 
@@ -91,7 +99,7 @@ contract MigrationTest is DssTest {
             requiredDVNs:         new address[](1),
             optionalDVNs:         new address[](0)
         });
-        ulnCfg.requiredDVNs[0] = 0x589dEDbD617e0CBcB916A9223F4d1300c294236b; // LayerZero Labs
+        ulnCfg.requiredDVNs[0] = 0x589dEDbD617e0CBcB916A9223F4d1300c294236b; // LayerZero Labs DVN
 
         SetConfigParam[] memory cfgParams = new SetConfigParam[](2);
         cfgParams[0] = SetConfigParam(MigrationInit.SOL_EID, 1, abi.encode(execCfg));
@@ -112,10 +120,22 @@ contract MigrationTest is DssTest {
 
         vm.startPrank(pauseProxy);
         _initOapp(govOapp);
+        _initOapp(oftAdapter);
         oftAdapter.setPauser(pauseProxy, true);
         oftAdapter.pause();
         assertTrue(oftAdapter.paused());
 
+        SendParam memory sendParams = SendParam({
+            dstEid: MigrationInit.SOL_EID,
+            to: bytes32(uint256(0xdede)),
+            amountLD: uint256(1000),
+            minAmountLD: uint256(0),
+            extraOptions: OptionsBuilder.newOptions().addExecutorLzReceiveOption(200_000, 0),
+            composeMsg: bytes(""),
+            oftCmd: bytes("")
+        });
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        oftAdapter.quoteSend(sendParams, false);
 
         MigrationInit.initMigrationStep0(nttManagerImpV2, 0);
         MigrationInit.initMigrationStep1();
@@ -125,5 +145,10 @@ contract MigrationTest is DssTest {
         assertFalse(oftAdapter.paused());
         assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);
         assertEq(TokenLike(usds).balanceOf(address(oftAdapter)), escrowed);
+
+        MessagingFee memory msgFee = oftAdapter.quoteSend(sendParams, false);
+        deal(usds, address(this), 1 ether, true);
+        TokenLike(usds).approve(address(oftAdapter), 1 ether);
+        oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
     }
 }
