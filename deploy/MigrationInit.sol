@@ -46,6 +46,11 @@ interface OFTAdapterLike {
     function outboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
     function inboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
     function rateLimitAccountingType() external view returns (uint8);
+    function peers(uint32) external view returns (bytes32);
+}
+
+interface EndpointLike {
+    function delegates(address) external view returns (address);
 }
 
 interface GovOappLike {
@@ -65,7 +70,6 @@ interface GovOappLike {
         address refundAddress
     ) external payable;
 }
-
 
 library MigrationInit {
     ChainlogLike constant LOG = ChainlogLike(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
@@ -322,9 +326,9 @@ library MigrationInit {
         OFTAdapterLike(oftAdapter).unpause();
     }
 
-    function _activateSolLZBridge(address originCaller, uint128 gasLimit, uint32 chainId, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
+    function _activateSolLZBridge(address owner, uint128 gasLimit, uint32 chainId, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
         _publishLZMessage({
-            originCaller: originCaller,
+            originCaller: owner,
             gasLimit:  gasLimit,
             chainId:   chainId,
             govOapp:   govOapp,
@@ -353,7 +357,6 @@ library MigrationInit {
         uint48  inboundWindow;
         uint256 inboundLimit;
         uint8   rlAccountingType;
-        address originCaller;
         address nttManager;
         bytes32 nttProgramId;
         bytes32 nttConfigPda;
@@ -376,7 +379,7 @@ library MigrationInit {
         (,uint48 outWindow,,uint256 outLimit) = oft.outboundRateLimits(p.solEid);
         (,uint48  inWindow,,uint256  inLimit) = oft.outboundRateLimits(p.solEid);
 
-        // Sanity checks -- TODO: check peer, .endpoint.delegate,  enforcedOptions for solEid
+        // Sanity checks -- TODO: check enforcedOptions for solEid?
         require(oft.token()    == p.token,                                    "MigrationInit/token-mismatch");
         require(oft.owner()    == p.owner,                                    "MigrationInit/owner-mismatch");
         require(oft.endpoint() == p.endpoint,                                 "MigrationInit/endpoint-mismatch");
@@ -386,11 +389,13 @@ library MigrationInit {
         require(outWindow == p.outboundWindow && outLimit == p.outboundLimit, "MigrationInit/outbound-rl-mismatch");
         require( inWindow == p.inboundWindow  &&  inLimit ==  p.inboundLimit, "MigrationInit/inbound-rl-mismatch");
         require(oft.rateLimitAccountingType() == p.rlAccountingType ,         "MigrationInit/rl-accounting-mismatch");
+        require(oft.peers(p.solEid) == p.oftProgramId ,                       "MigrationInit/peer-mismatch");
+        require(EndpointLike(p.endpoint).delegates(p.oftAdapter) == p.owner,  "MigrationInit/delegate-mismatch");
 
         _migrateLockedTokens(p.nttManager, p.oftAdapter);
         _transferMintAuthority(p.wormhole, p.govProgramId, p.nttProgramId, p.nttConfigPda, p.nttTokenAuthorityPda, p.usdsMintAddr, p.custodyAta, p.newMintAuthority);
         _activateEthLZBridge(p.oftAdapter);
-        _activateSolLZBridge(p.originCaller, p.gasLimit, p.solEid, p.govOapp, p.oftStore, p.oftProgramId);
+        _activateSolLZBridge(p.owner, p.gasLimit, p.solEid, p.govOapp, p.oftStore, p.oftProgramId);
     }
 
     function initMigrationStep2(
@@ -406,7 +411,6 @@ library MigrationInit {
         uint256 inboundLimit,
         uint8   rlAccountingType
     ) internal {
-        address pauseProxy = LOG.getAddress("MCD_PAUSE_PROXY");
         MigrationStep2Params memory p = MigrationStep2Params({
             oftAdapter:           oftAdapter,
             newMintAuthority:     newMintAuthority,
@@ -414,7 +418,6 @@ library MigrationInit {
             govOapp:              govOapp,
             oftStore:             oftStore,
             oftProgramId:         oftProgramId,
-            originCaller:         pauseProxy,
             outboundWindow:       outboundWindow,
             outboundLimit:        outboundLimit,
             inboundWindow:        inboundWindow,
@@ -429,7 +432,7 @@ library MigrationInit {
             govProgramId:         GOVERNANCE_PROGRAM_ID,
             wormhole:             WORMHOLE_CORE_BRIDGE,
             token:                LOG.getAddress("USDS"),
-            owner:                pauseProxy,
+            owner:                LOG.getAddress("MCD_PAUSE_PROXY"),
             endpoint:             ETH_LZ_ENDPOINT,
             solEid:               SOL_EID
         });

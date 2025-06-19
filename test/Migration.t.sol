@@ -149,7 +149,7 @@ contract MigrationTest is DssTest {
             gasLimit: 1_000_000,
             govOapp: address(govOapp),
             oftStore: 0,
-            oftProgramId: 0,
+            oftProgramId: bytes32(uint256(0xbeef)),
             outboundWindow: rlConfigs[0].window,
             outboundLimit: rlConfigs[0].limit,
             inboundWindow: rlConfigs[0].window,
