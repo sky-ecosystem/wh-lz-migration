@@ -70,6 +70,7 @@ library MigrationInit {
     address constant WORMHOLE_CORE_BRIDGE = 0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B;
     address constant NTT_MANAGER          = 0x7d4958454a3f520bDA8be764d06591B054B0bf33;
     address constant ETH_LZ_ENDPOINT      = 0x1a44076050125825900e736c501f859c50fE728c;
+    uint32  constant SOL_EID              = 30168;
 
     // python3 -c "import base58; print(base58.b58decode('BPFLoaderUpgradeab1e11111111111111111111111').hex())"
     bytes32 constant BFT_LOADER_UPGRADABLE_ADDR = 0x02a8f6914e88a1b0e210153ef763ae2b00c2b93d16c124d2c0537a1004800000;
@@ -121,7 +122,10 @@ library MigrationInit {
         });
     }
 
-    function _publishLZMessage(uint128 gasLimit, uint16 chainId, address govOapp, bytes32 programId, bytes memory accounts, bytes memory data) internal {
+    function _publishLZMessage(address originCaller, uint128 gasLimit, uint32 chainId, address govOapp, bytes32 programId, bytes memory accounts, bytes memory data) internal {
+        // The following yields the same result as doing:
+        // bytes memory extraOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gasLimit, 0);
+        // but without the need to import OptionsBuilder
         bytes memory extraOptions = abi.encodePacked( // see addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol
             abi.encodePacked(uint16(3)), // Option TYPE_3
             uint8(1),                    // ExecutorOptions.WORKER_ID
@@ -133,8 +137,8 @@ library MigrationInit {
         bytes memory message = bytes.concat(
             abi.encodePacked(
                 uint8(2),                                 // action, 1 byte
-                chainId,                                  // chainId, 2 bytes (30168 for Solana mainnet; 40168 for Solana testnet)
-                bytes32(uint256(uint160(address(this)))), // originCaller, 32 bytes
+                chainId,                                  // chainId, 4 bytes (30168 for Solana mainnet; 40168 for Solana testnet)
+                bytes32(uint256(uint160(originCaller))),  // originCaller, 32 bytes
                 programId,                                // programId, 32 bytes
                 uint16(accounts.length / 34)              // accountsLength, 2 bytes
             ),
@@ -154,7 +158,7 @@ library MigrationInit {
             message: message,
             extraOptions: extraOptions,
             fee: fee,
-            refundAddress: address(this)
+            refundAddress: originCaller
         });
     }
 
@@ -315,8 +319,9 @@ library MigrationInit {
         OFTAdapterLike(oftAdapter).unpause();
     }
 
-    function _activateSolLZBridge(uint128 gasLimit, uint16 chainId, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
+    function _activateSolLZBridge(address originCaller, uint128 gasLimit, uint32 chainId, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
         _publishLZMessage({
+            originCaller: originCaller,
             gasLimit:  gasLimit,
             chainId:   chainId,
             govOapp:   govOapp,
@@ -340,6 +345,7 @@ library MigrationInit {
         address govOapp; 
         bytes32 oftStore; 
         bytes32 oftProgramId;
+        address originCaller;
         address nttManager;
         bytes32 nttProgramId;
         bytes32 nttConfigPda;
@@ -351,7 +357,7 @@ library MigrationInit {
         address token;
         address owner;
         address endpoint;
-        uint16 solEId;
+        uint32 solEId;
     }
 
     function initMigrationStep2(
@@ -371,7 +377,7 @@ library MigrationInit {
         _migrateLockedTokens(p.nttManager, p.oftAdapter);
         _transferMintAuthority(p.wormhole, p.govProgramId, p.nttProgramId, p.nttConfigPda, p.nttTokenAuthorityPda, p.usdsMintAddr, p.custodyAta, p.newMintAuthority);
         _activateEthLZBridge(p.oftAdapter);
-        _activateSolLZBridge(p.gasLimit, p.solEId, p.govOapp, p.oftStore, p.oftProgramId);
+        _activateSolLZBridge(p.originCaller, p.gasLimit, p.solEId, p.govOapp, p.oftStore, p.oftProgramId);
     }
 
     function initMigrationStep2(
@@ -382,13 +388,15 @@ library MigrationInit {
         bytes32 oftStore, 
         bytes32 oftProgramId
     ) internal {
+        address pauseProxy = LOG.getAddress("MCD_PAUSE_PROXY");
         MigrationStep2Params memory p = MigrationStep2Params({
-            oftAdapter: oftAdapter,
+            oftAdapter:           oftAdapter,
             newMintAuthority:     newMintAuthority,
             gasLimit:             gasLimit,
             govOapp:              govOapp,
             oftStore:             oftStore,
             oftProgramId:         oftProgramId,
+            originCaller:         pauseProxy,
             nttManager:           NTT_MANAGER,
             nttProgramId:         NTT_PROGRAM_ID,
             nttConfigPda:         NTT_CONFIG_PDA,
@@ -398,9 +406,9 @@ library MigrationInit {
             govProgramId:         GOVERNANCE_PROGRAM_ID,
             wormhole:             WORMHOLE_CORE_BRIDGE,
             token:                LOG.getAddress("USDS"),
-            owner:                LOG.getAddress("MCD_PAUSE_PROXY"),
+            owner:                pauseProxy,
             endpoint:             ETH_LZ_ENDPOINT,
-            solEId:               30168
+            solEId:               SOL_EID
         });
 
         initMigrationStep2(p);

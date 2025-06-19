@@ -21,6 +21,12 @@ import "dss-test/DssTest.sol";
 import { MigrationDeploy } from "deploy/MigrationDeploy.sol";
 import { MigrationInit } from "deploy/MigrationInit.sol";
 import { NttManager } from "lib/sky-ntt-migration/evm/src/NttManager/NttManager.sol";
+import { OFTAdapter } from "lib/sky-oapp-oft/contracts/OFTAdapter.sol";
+import { GovernanceControllerOApp } from "lib/sky-oapp-gov/contracts/GovernanceControllerOApp.sol";
+import { IOAppCore } from "lib/sky-oapp-gov/node_modules/@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
+import { SetConfigParam, IMessageLibManager } from "lib/sky-oapp-gov/node_modules/@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
+import { UlnConfig } from "lib/sky-oapp-gov/node_modules/@layerzerolabs/lz-evm-messagelib-v2/contracts/uln/UlnBase.sol";
+import { ExecutorConfig } from "lib/sky-oapp-gov/node_modules/@layerzerolabs/lz-evm-messagelib-v2/contracts/SendLibBase.sol";
 
 interface ChainlogLike {
     function getAddress(bytes32) external view returns (address);
@@ -28,43 +34,6 @@ interface ChainlogLike {
 
 interface TokenLike {
     function balanceOf(address) external view returns (uint256);
-}
-
-contract OFTAdapterMock{
-    struct FeeConfig {
-        uint16 bps;
-        bool enabled;
-    }
-    address public owner = msg.sender;
-    address public token;
-    address public endpoint = 0x1a44076050125825900e736c501f859c50fE728c; // LZ Ethereum EndpointV2
-    uint16 public defaultFeeBps;
-    bool public paused = true;
-    mapping(uint32 => FeeConfig) public feeBps;
-    constructor(address _token) {
-        token = _token;
-    }
-    function unpause() external {
-        paused = false;
-    }
-}
-
-contract GovOappMock{
-    struct MessagingFee {
-        uint256 nativeFee;
-        uint256 lzTokenFee;
-    }
-    function sendRawBytesAction(
-        bytes calldata message,
-        bytes calldata extraOptions,
-        MessagingFee calldata fee,
-        address refundAddress
-    ) external payable {}
-    function quoteRawBytesAction(
-        bytes calldata message,
-        bytes calldata extraOptions,
-        bool payInLzToken
-    ) external view returns (MessagingFee memory fee) {}
 }
 
 contract MigrationTest is DssTest {
@@ -107,20 +76,54 @@ contract MigrationTest is DssTest {
         assertEq(nttManager.isSendPaused(), true);
     }
 
+    function _initOapp(IOAppCore oapp) internal {
+        oapp.setPeer(MigrationInit.SOL_EID, bytes32(uint256(0xbeef)));
+
+        ExecutorConfig memory execCfg = ExecutorConfig({
+            maxMessageSize: 1_000_000,
+            executor:       0x173272739Bd7Aa6e4e214714048a9fE699453059 // LZ Executor
+        });
+        UlnConfig memory ulnCfg = UlnConfig({
+            confirmations:        15,
+            requiredDVNCount:     1,
+            optionalDVNCount:     type(uint8).max,
+            optionalDVNThreshold: 0,
+            requiredDVNs:         new address[](1),
+            optionalDVNs:         new address[](0)
+        });
+        ulnCfg.requiredDVNs[0] = 0x589dEDbD617e0CBcB916A9223F4d1300c294236b; // LayerZero Labs
+
+        SetConfigParam[] memory cfgParams = new SetConfigParam[](2);
+        cfgParams[0] = SetConfigParam(MigrationInit.SOL_EID, 1, abi.encode(execCfg));
+        cfgParams[1] = SetConfigParam(MigrationInit.SOL_EID, 2, abi.encode(ulnCfg));
+
+        IMessageLibManager(MigrationInit.ETH_LZ_ENDPOINT).setConfig(
+            address(oapp),
+            0xbB2Ea70C9E858123480642Cf96acbcCE1372dCe1, // SendUln302 message lib
+            cfgParams
+        );
+    }
+
     function testMigrationStep2() public {
         uint256 escrowed = TokenLike(usds).balanceOf(address(nttManager));
 
+        OFTAdapter oftAdapter = new OFTAdapter(usds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
+        GovernanceControllerOApp govOapp = new GovernanceControllerOApp(MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
+
         vm.startPrank(pauseProxy);
-        address oftAdapter = address(new OFTAdapterMock(usds));
-        assertTrue(OFTAdapterMock(oftAdapter).paused());
+        _initOapp(govOapp);
+        oftAdapter.setPauser(pauseProxy, true);
+        oftAdapter.pause();
+        assertTrue(oftAdapter.paused());
+
 
         MigrationInit.initMigrationStep0(nttManagerImpV2, 0);
         MigrationInit.initMigrationStep1();
-        MigrationInit.initMigrationStep2(oftAdapter, 0, 0, address(new GovOappMock()), 0, 0);  
+        MigrationInit.initMigrationStep2(address(oftAdapter), 0, 1_000_000, address(govOapp), 0, 0);  
         vm.stopPrank();
 
-        assertFalse(OFTAdapterMock(oftAdapter).paused());
+        assertFalse(oftAdapter.paused());
         assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);
-        assertEq(TokenLike(usds).balanceOf(oftAdapter), escrowed);
+        assertEq(TokenLike(usds).balanceOf(address(oftAdapter)), escrowed);
     }
 }
