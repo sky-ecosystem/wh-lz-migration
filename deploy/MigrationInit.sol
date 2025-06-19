@@ -43,6 +43,9 @@ interface OFTAdapterLike {
     function feeBps(uint32) external view returns (uint16, bool);
     function paused() external view returns (bool);
     function unpause() external;
+    function outboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
+    function inboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
+    function rateLimitAccountingType() external view returns (uint8);
 }
 
 interface GovOappLike {
@@ -345,6 +348,11 @@ library MigrationInit {
         address govOapp; 
         bytes32 oftStore; 
         bytes32 oftProgramId;
+        uint48  outboundWindow;
+        uint256 outboundLimit;
+        uint48  inboundWindow;
+        uint256 inboundLimit;
+        uint8   rlAccountingType;
         address originCaller;
         address nttManager;
         bytes32 nttProgramId;
@@ -357,27 +365,32 @@ library MigrationInit {
         address token;
         address owner;
         address endpoint;
-        uint32 solEId;
+        uint32  solEid;
     }
 
     function initMigrationStep2(
         MigrationStep2Params memory p
     ) internal {
         OFTAdapterLike oft = OFTAdapterLike(p.oftAdapter);
-        (uint16 feeBps, bool enabled) = oft.feeBps(p.solEId);
+        (uint16 feeBps, bool enabled)         = oft.feeBps(p.solEid);
+        (,uint48 outWindow,,uint256 outLimit) = oft.outboundRateLimits(p.solEid);
+        (,uint48  inWindow,,uint256  inLimit) = oft.outboundRateLimits(p.solEid);
 
-        // Sanity checks -- TODO: check peer, .endpoint.delegate,  RL AccountingType, , enforcedOptions out/in RL for solEId
-        require(oft.token()    == p.token,    "MigrationInit/token-mismatch");
-        require(oft.owner()    == p.owner,    "MigrationInit/owner-mismatch");
-        require(oft.endpoint() == p.endpoint, "MigrationInit/endpoint-mismatch");
-        require(oft.defaultFeeBps() == 0,     "MigrationInit/incorrect-default-fee");
-        require(feeBps == 0 && !enabled,      "MigrationInit/incorrect-solana-fee");
-        require(oft.paused(),                 "MigrationInit/not-paused");
+        // Sanity checks -- TODO: check peer, .endpoint.delegate,  enforcedOptions for solEid
+        require(oft.token()    == p.token,                                    "MigrationInit/token-mismatch");
+        require(oft.owner()    == p.owner,                                    "MigrationInit/owner-mismatch");
+        require(oft.endpoint() == p.endpoint,                                 "MigrationInit/endpoint-mismatch");
+        require(oft.defaultFeeBps() == 0,                                     "MigrationInit/incorrect-default-fee");
+        require(feeBps == 0 && !enabled,                                      "MigrationInit/incorrect-solana-fee");
+        require(oft.paused(),                                                 "MigrationInit/not-paused");
+        require(outWindow == p.outboundWindow && outLimit == p.outboundLimit, "MigrationInit/outbound-rl-mismatch");
+        require( inWindow == p.inboundWindow  &&  inLimit ==  p.inboundLimit, "MigrationInit/inbound-rl-mismatch");
+        require(oft.rateLimitAccountingType() == p.rlAccountingType ,         "MigrationInit/rl-accounting-mismatch");
 
         _migrateLockedTokens(p.nttManager, p.oftAdapter);
         _transferMintAuthority(p.wormhole, p.govProgramId, p.nttProgramId, p.nttConfigPda, p.nttTokenAuthorityPda, p.usdsMintAddr, p.custodyAta, p.newMintAuthority);
         _activateEthLZBridge(p.oftAdapter);
-        _activateSolLZBridge(p.originCaller, p.gasLimit, p.solEId, p.govOapp, p.oftStore, p.oftProgramId);
+        _activateSolLZBridge(p.originCaller, p.gasLimit, p.solEid, p.govOapp, p.oftStore, p.oftProgramId);
     }
 
     function initMigrationStep2(
@@ -386,7 +399,12 @@ library MigrationInit {
         uint128 gasLimit,
         address govOapp, 
         bytes32 oftStore, 
-        bytes32 oftProgramId
+        bytes32 oftProgramId,
+        uint48  outboundWindow,
+        uint256 outboundLimit,
+        uint48  inboundWindow,
+        uint256 inboundLimit,
+        uint8   rlAccountingType
     ) internal {
         address pauseProxy = LOG.getAddress("MCD_PAUSE_PROXY");
         MigrationStep2Params memory p = MigrationStep2Params({
@@ -397,6 +415,11 @@ library MigrationInit {
             oftStore:             oftStore,
             oftProgramId:         oftProgramId,
             originCaller:         pauseProxy,
+            outboundWindow:       outboundWindow,
+            outboundLimit:        outboundLimit,
+            inboundWindow:        inboundWindow,
+            inboundLimit:         inboundLimit,
+            rlAccountingType:     rlAccountingType,
             nttManager:           NTT_MANAGER,
             nttProgramId:         NTT_PROGRAM_ID,
             nttConfigPda:         NTT_CONFIG_PDA,
@@ -408,7 +431,7 @@ library MigrationInit {
             token:                LOG.getAddress("USDS"),
             owner:                pauseProxy,
             endpoint:             ETH_LZ_ENDPOINT,
-            solEId:               SOL_EID
+            solEid:               SOL_EID
         });
 
         initMigrationStep2(p);

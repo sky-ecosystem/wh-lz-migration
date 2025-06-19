@@ -22,6 +22,7 @@ import { MigrationDeploy } from "deploy/MigrationDeploy.sol";
 import { MigrationInit } from "deploy/MigrationInit.sol";
 import { NttManager } from "lib/sky-ntt-migration/evm/src/NttManager/NttManager.sol";
 import { OFTAdapter } from "lib/sky-oapp-oft/contracts/OFTAdapter.sol";
+import { DoubleSidedRateLimiter } from "lib/sky-oapp-oft/contracts/oft-dsrl/DoubleSidedRateLimiter.sol";
 import { GovernanceControllerOApp } from "lib/sky-oapp-gov/contracts/GovernanceControllerOApp.sol";
 
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
@@ -121,15 +122,18 @@ contract MigrationTest is DssTest {
         vm.startPrank(pauseProxy);
         _initOapp(govOapp);
         _initOapp(oftAdapter);
+        DoubleSidedRateLimiter.RateLimitConfig[] memory rlConfigs = new DoubleSidedRateLimiter.RateLimitConfig[](1);
+        rlConfigs[0] = DoubleSidedRateLimiter.RateLimitConfig(MigrationInit.SOL_EID, 1 days, 1_000_000 ether);
+        oftAdapter.setRateLimits(rlConfigs, DoubleSidedRateLimiter.RateLimitDirection.Outbound);
+        oftAdapter.setRateLimits(rlConfigs, DoubleSidedRateLimiter.RateLimitDirection.Inbound);
         oftAdapter.setPauser(pauseProxy, true);
         oftAdapter.pause();
         assertTrue(oftAdapter.paused());
-
         SendParam memory sendParams = SendParam({
             dstEid: MigrationInit.SOL_EID,
             to: bytes32(uint256(0xdede)),
-            amountLD: uint256(1000),
-            minAmountLD: uint256(0),
+            amountLD: 1 ether,
+            minAmountLD: 1 ether,
             extraOptions: OptionsBuilder.newOptions().addExecutorLzReceiveOption(200_000, 0),
             composeMsg: bytes(""),
             oftCmd: bytes("")
@@ -139,7 +143,19 @@ contract MigrationTest is DssTest {
 
         MigrationInit.initMigrationStep0(nttManagerImpV2, 0);
         MigrationInit.initMigrationStep1();
-        MigrationInit.initMigrationStep2(address(oftAdapter), 0, 1_000_000, address(govOapp), 0, 0);  
+        MigrationInit.initMigrationStep2({
+            oftAdapter: address(oftAdapter),
+            newMintAuthority: 0,
+            gasLimit: 1_000_000,
+            govOapp: address(govOapp),
+            oftStore: 0,
+            oftProgramId: 0,
+            outboundWindow: rlConfigs[0].window,
+            outboundLimit: rlConfigs[0].limit,
+            inboundWindow: rlConfigs[0].window,
+            inboundLimit: rlConfigs[0].limit,
+            rlAccountingType: 0
+        });  
         vm.stopPrank();
 
         assertFalse(oftAdapter.paused());
