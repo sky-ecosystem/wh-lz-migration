@@ -395,8 +395,10 @@ library MigrationInit {
         require(oft.rateLimitAccountingType() == p.rlAccountingType ,         "MigrationInit/rl-accounting-mismatch");
         require(oft.peers(p.solEid) == p.oftProgramId ,                       "MigrationInit/peer-mismatch");
         require(EndpointLike(p.endpoint).delegates(p.oftAdapter) == p.owner,  "MigrationInit/delegate-mismatch");
-        require(opts1.length == 22 && bytes6(opts1) == 0x000301001101,        "MigrationInit/bad-enforced-opts-msg-type1"); // expecting [{ msgType: 1, optionType: ExecutorOptionType.LZ_RECEIVE, gas, value: 0 }], see encoding by addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol
-        require(opts2.length == 0                                    ,        "MigrationInit/bad-enforced-opts-msg-type2");
+        require(opts1.length == 22 && bytes6(opts1) == 0x000301001101,        "MigrationInit/bad-enforced-opts-msg-type1");// expecting [{ msgType: 1, optionType: ExecutorOptionType.LZ_RECEIVE, gas, value: 0 }], see encoding by addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol 
+        uint128 gas = uint128(uint256(bytes32(opts1) >> 80));
+        require(gas > 0 && gas <= 36_000_000,                                 "MigrationInit/bad-enforced-opts-msg-type1-gas"); 
+        require(opts2.length == 0,                                            "MigrationInit/bad-enforced-opts-msg-type2");
         }
 
         _migrateLockedTokens(p.nttManager, p.oftAdapter);
