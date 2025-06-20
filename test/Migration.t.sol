@@ -26,6 +26,7 @@ import { DoubleSidedRateLimiter } from "lib/sky-oapp-oft/contracts/oft-dsrl/Doub
 import { GovernanceControllerOApp } from "lib/sky-oapp-gov/contracts/GovernanceControllerOApp.sol";
 
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
+import { IOAppOptionsType3, EnforcedOptionParam } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppOptionsType3.sol";
 import { SendParam, MessagingFee } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import { SetConfigParam, IMessageLibManager } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
 import { UlnConfig } from "@layerzerolabs/lz-evm-messagelib-v2/contracts/uln/UlnBase.sol";
@@ -85,8 +86,8 @@ contract MigrationTest is DssTest {
         assertEq(nttManager.isSendPaused(), true);
     }
 
-    function _initOapp(IOAppCore oapp) internal {
-        oapp.setPeer(MigrationInit.SOL_EID, bytes32(uint256(0xbeef)));
+    function _initOapp(address oapp) internal {
+        IOAppCore(oapp).setPeer(MigrationInit.SOL_EID, bytes32(uint256(0xbeef)));
 
         ExecutorConfig memory execCfg = ExecutorConfig({
             maxMessageSize: 1_000_000,
@@ -107,10 +108,14 @@ contract MigrationTest is DssTest {
         cfgParams[1] = SetConfigParam(MigrationInit.SOL_EID, 2, abi.encode(ulnCfg));
 
         IMessageLibManager(MigrationInit.ETH_LZ_ENDPOINT).setConfig(
-            address(oapp),
+            oapp,
             0xbB2Ea70C9E858123480642Cf96acbcCE1372dCe1, // SendUln302 message lib
             cfgParams
         );
+
+        EnforcedOptionParam[] memory opts = new EnforcedOptionParam[](1);
+        opts[0] = EnforcedOptionParam(MigrationInit.SOL_EID, 1, OptionsBuilder.newOptions().addExecutorLzReceiveOption(1_000_000, 0));
+        IOAppOptionsType3(oapp).setEnforcedOptions(opts);
     }
 
     function testMigrationStep2() public {
@@ -120,8 +125,8 @@ contract MigrationTest is DssTest {
         GovernanceControllerOApp govOapp = new GovernanceControllerOApp(MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
 
         vm.startPrank(pauseProxy);
-        _initOapp(govOapp);
-        _initOapp(oftAdapter);
+        _initOapp(address(govOapp));
+        _initOapp(address(oftAdapter));
         DoubleSidedRateLimiter.RateLimitConfig[] memory rlConfigs = new DoubleSidedRateLimiter.RateLimitConfig[](1);
         rlConfigs[0] = DoubleSidedRateLimiter.RateLimitConfig(MigrationInit.SOL_EID, 1 days, 1_000_000 ether);
         oftAdapter.setRateLimits(rlConfigs, DoubleSidedRateLimiter.RateLimitDirection.Outbound);
@@ -134,7 +139,7 @@ contract MigrationTest is DssTest {
             to: bytes32(uint256(0xdede)),
             amountLD: 1 ether,
             minAmountLD: 1 ether,
-            extraOptions: OptionsBuilder.newOptions().addExecutorLzReceiveOption(200_000, 0),
+            extraOptions: bytes(""),
             composeMsg: bytes(""),
             oftCmd: bytes("")
         });

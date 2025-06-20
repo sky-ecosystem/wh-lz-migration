@@ -47,6 +47,7 @@ interface OFTAdapterLike {
     function inboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
     function rateLimitAccountingType() external view returns (uint8);
     function peers(uint32) external view returns (bytes32);
+    function enforcedOptions(uint32, uint16) external view returns (bytes memory);
 }
 
 interface EndpointLike {
@@ -374,12 +375,15 @@ library MigrationInit {
     function initMigrationStep2(
         MigrationStep2Params memory p
     ) internal {
+        {
         OFTAdapterLike oft = OFTAdapterLike(p.oftAdapter);
         (uint16 feeBps, bool enabled)         = oft.feeBps(p.solEid);
         (,uint48 outWindow,,uint256 outLimit) = oft.outboundRateLimits(p.solEid);
         (,uint48  inWindow,,uint256  inLimit) = oft.outboundRateLimits(p.solEid);
+        bytes memory opts1 = oft.enforcedOptions(p.solEid, 1);
+        bytes memory opts2 = oft.enforcedOptions(p.solEid, 2);
 
-        // Sanity checks -- TODO: check enforcedOptions for solEid?
+        // Sanity checks
         require(oft.token()    == p.token,                                    "MigrationInit/token-mismatch");
         require(oft.owner()    == p.owner,                                    "MigrationInit/owner-mismatch");
         require(oft.endpoint() == p.endpoint,                                 "MigrationInit/endpoint-mismatch");
@@ -391,6 +395,9 @@ library MigrationInit {
         require(oft.rateLimitAccountingType() == p.rlAccountingType ,         "MigrationInit/rl-accounting-mismatch");
         require(oft.peers(p.solEid) == p.oftProgramId ,                       "MigrationInit/peer-mismatch");
         require(EndpointLike(p.endpoint).delegates(p.oftAdapter) == p.owner,  "MigrationInit/delegate-mismatch");
+        require(opts1.length == 22 && bytes6(opts1) == 0x000301001101,        "MigrationInit/bad-enforced-opts-msg-type1"); // expecting [{ msgType: 1, optionType: ExecutorOptionType.LZ_RECEIVE, gas, value: 0 }], see encoding by addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol
+        require(opts2.length == 0                                    ,        "MigrationInit/bad-enforced-opts-msg-type2");
+        }
 
         _migrateLockedTokens(p.nttManager, p.oftAdapter);
         _transferMintAuthority(p.wormhole, p.govProgramId, p.nttProgramId, p.nttConfigPda, p.nttTokenAuthorityPda, p.usdsMintAddr, p.custodyAta, p.newMintAuthority);
