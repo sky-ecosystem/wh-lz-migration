@@ -53,6 +53,9 @@ contract MigrationTest is DssTest {
     address public pauseProxy;
     address public usds;
     address public nttManagerImpV2;
+
+    bytes32 public oftProgramId = bytes32(uint256(0xbeef));
+    bytes32 public newGovProgramId = bytes32(uint256(0xb055));
     
     function setUp() public {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
@@ -86,8 +89,8 @@ contract MigrationTest is DssTest {
         assertEq(nttManager.isSendPaused(), true);
     }
 
-    function _initOapp(address oapp) internal {
-        IOAppCore(oapp).setPeer(MigrationInit.SOL_EID, bytes32(uint256(0xbeef)));
+    function _initOapp(address oapp, bytes32 peer) internal {
+        IOAppCore(oapp).setPeer(MigrationInit.SOL_EID, peer);
 
         ExecutorConfig memory execCfg = ExecutorConfig({
             maxMessageSize: 1_000_000,
@@ -125,8 +128,8 @@ contract MigrationTest is DssTest {
         GovernanceControllerOApp govOapp = new GovernanceControllerOApp(MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
 
         vm.startPrank(pauseProxy);
-        _initOapp(address(govOapp));
-        _initOapp(address(oftAdapter));
+        _initOapp(address(govOapp), newGovProgramId);
+        _initOapp(address(oftAdapter), oftProgramId);
         DoubleSidedRateLimiter.RateLimitConfig[] memory rlConfigs = new DoubleSidedRateLimiter.RateLimitConfig[](1);
         rlConfigs[0] = DoubleSidedRateLimiter.RateLimitConfig(MigrationInit.SOL_EID, 1 days, 1_000_000 ether);
         oftAdapter.setRateLimits(rlConfigs, DoubleSidedRateLimiter.RateLimitDirection.Outbound);
@@ -150,16 +153,18 @@ contract MigrationTest is DssTest {
         MigrationInit.initMigrationStep1();
         MigrationInit.initMigrationStep2({
             oftAdapter: address(oftAdapter),
+            oftStore: 0,
+            oftProgramId: oftProgramId,
+            govOapp: address(govOapp),
+            newGovProgramId: newGovProgramId,
             newMintAuthority: 0,
             gasLimit: 1_000_000,
-            govOapp: address(govOapp),
-            oftStore: 0,
-            oftProgramId: bytes32(uint256(0xbeef)),
             outboundWindow: rlConfigs[0].window,
             outboundLimit: rlConfigs[0].limit,
             inboundWindow: rlConfigs[0].window,
             inboundLimit: rlConfigs[0].limit,
-            rlAccountingType: 0
+            rlAccountingType: 0,
+            allowlistEnabled: false
         });  
         vm.stopPrank();
 

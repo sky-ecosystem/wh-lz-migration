@@ -35,10 +35,15 @@ interface WormholeLike {
     function publishMessage(uint32 nonce, bytes memory payload, uint8 consistencyLevel) external payable returns (uint64);
 }
 
-interface OFTAdapterLike {
-    function token() external view returns (address);
+interface OAppLike {
     function owner() external view returns (address);
     function endpoint() external view returns (address);
+    function peers(uint32) external view returns (bytes32);
+    function enforcedOptions(uint32, uint16) external view returns (bytes memory);
+}
+
+interface OFTAdapterLike is OAppLike {
+    function token() external view returns (address);
     function defaultFeeBps() external view returns (uint16);
     function feeBps(uint32) external view returns (uint16, bool);
     function paused() external view returns (bool);
@@ -46,15 +51,15 @@ interface OFTAdapterLike {
     function outboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
     function inboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
     function rateLimitAccountingType() external view returns (uint8);
-    function peers(uint32) external view returns (bytes32);
-    function enforcedOptions(uint32, uint16) external view returns (bytes memory);
 }
 
 interface EndpointLike {
     function delegates(address) external view returns (address);
 }
 
-interface GovOappLike {
+interface GovOappLike is OAppLike {
+    function allowlistEnabled() external view returns (bool);
+
     struct MessagingFee {
         uint256 nativeFee;
         uint256 lzTokenFee;
@@ -290,6 +295,21 @@ library MigrationInit {
         initMigrationStep1(p);
     }
 
+    function _sanityCheckOapp(address oapp, uint32 solEid, address owner, address endpoint, bytes32 peer) internal view {
+        OAppLike oapp_ = OAppLike(oapp);
+        bytes memory opts1 = oapp_.enforcedOptions(solEid, 1);
+        bytes memory opts2 = oapp_.enforcedOptions(solEid, 2);
+
+        require(oapp_.owner() == owner,                                "MigrationInit/owner-mismatch"); 
+        require(oapp_.endpoint() == endpoint,                          "MigrationInit/endpoint-mismatch");
+        require(oapp_.peers(solEid) == peer,                           "MigrationInit/peer-mismatch");
+        require(EndpointLike(endpoint).delegates(oapp) == owner,       "MigrationInit/delegate-mismatch");
+        require(opts1.length == 22 && bytes6(opts1) == 0x000301001101, "MigrationInit/bad-enforced-opts-msg-type1"); // expecting [{ msgType: 1, optionType: ExecutorOptionType.LZ_RECEIVE, gas, value: 0 }], see encoding by addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol 
+        uint128 gas = uint128(uint256(bytes32(opts1) >> 80));
+        require(gas > 0 && gas <= 36_000_000,                          "MigrationInit/bad-enforced-opts-msg-type1-gas"); 
+        require(opts2.length == 0,                                     "MigrationInit/bad-enforced-opts-msg-type2");
+    }
+
     function _migrateLockedTokens(address nttManager, address oftAdapter) internal {
         NttManagerLike(nttManager).migrateLockedTokens(oftAdapter);
     }
@@ -348,16 +368,18 @@ library MigrationInit {
 
     struct MigrationStep2Params {
         address oftAdapter;
-        bytes32 newMintAuthority;
-        uint128 gasLimit;
-        address govOapp; 
         bytes32 oftStore; 
         bytes32 oftProgramId;
+        address govOapp; 
+        bytes32 newGovProgramId;
+        bytes32 newMintAuthority;
+        uint128 gasLimit;
         uint48  outboundWindow;
         uint256 outboundLimit;
         uint48  inboundWindow;
         uint256 inboundLimit;
         uint8   rlAccountingType;
+        bool    allowlistEnabled;
         address nttManager;
         bytes32 nttProgramId;
         bytes32 nttConfigPda;
@@ -375,30 +397,22 @@ library MigrationInit {
     function initMigrationStep2(
         MigrationStep2Params memory p
     ) internal {
+        // Sanity checks
+        _sanityCheckOapp(p.oftAdapter, p.solEid, p.owner, p.endpoint, p.oftProgramId);
+        _sanityCheckOapp(p.govOapp,    p.solEid, p.owner, p.endpoint, p.newGovProgramId);
         {
         OFTAdapterLike oft = OFTAdapterLike(p.oftAdapter);
         (uint16 feeBps, bool enabled)         = oft.feeBps(p.solEid);
         (,uint48 outWindow,,uint256 outLimit) = oft.outboundRateLimits(p.solEid);
         (,uint48  inWindow,,uint256  inLimit) = oft.outboundRateLimits(p.solEid);
-        bytes memory opts1 = oft.enforcedOptions(p.solEid, 1);
-        bytes memory opts2 = oft.enforcedOptions(p.solEid, 2);
-
-        // Sanity checks
-        require(oft.token()    == p.token,                                    "MigrationInit/token-mismatch");
-        require(oft.owner()    == p.owner,                                    "MigrationInit/owner-mismatch");
-        require(oft.endpoint() == p.endpoint,                                 "MigrationInit/endpoint-mismatch");
-        require(oft.defaultFeeBps() == 0,                                     "MigrationInit/incorrect-default-fee");
-        require(feeBps == 0 && !enabled,                                      "MigrationInit/incorrect-solana-fee");
-        require(oft.paused(),                                                 "MigrationInit/not-paused");
-        require(outWindow == p.outboundWindow && outLimit == p.outboundLimit, "MigrationInit/outbound-rl-mismatch");
-        require( inWindow == p.inboundWindow  &&  inLimit ==  p.inboundLimit, "MigrationInit/inbound-rl-mismatch");
-        require(oft.rateLimitAccountingType() == p.rlAccountingType ,         "MigrationInit/rl-accounting-mismatch");
-        require(oft.peers(p.solEid) == p.oftProgramId ,                       "MigrationInit/peer-mismatch");
-        require(EndpointLike(p.endpoint).delegates(p.oftAdapter) == p.owner,  "MigrationInit/delegate-mismatch");
-        require(opts1.length == 22 && bytes6(opts1) == 0x000301001101,        "MigrationInit/bad-enforced-opts-msg-type1");// expecting [{ msgType: 1, optionType: ExecutorOptionType.LZ_RECEIVE, gas, value: 0 }], see encoding by addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol 
-        uint128 gas = uint128(uint256(bytes32(opts1) >> 80));
-        require(gas > 0 && gas <= 36_000_000,                                 "MigrationInit/bad-enforced-opts-msg-type1-gas"); 
-        require(opts2.length == 0,                                            "MigrationInit/bad-enforced-opts-msg-type2");
+        require(oft.token() == p.token,                                          "MigrationInit/token-mismatch");
+        require(oft.defaultFeeBps() == 0,                                        "MigrationInit/incorrect-default-fee");
+        require(feeBps == 0 && !enabled,                                         "MigrationInit/incorrect-solana-fee");
+        require(oft.paused(),                                                    "MigrationInit/not-paused");
+        require(outWindow == p.outboundWindow && outLimit == p.outboundLimit,    "MigrationInit/outbound-rl-mismatch");
+        require( inWindow == p.inboundWindow  &&  inLimit ==  p.inboundLimit,    "MigrationInit/inbound-rl-mismatch");
+        require(oft.rateLimitAccountingType() == p.rlAccountingType ,            "MigrationInit/rl-accounting-mismatch");
+        require(GovOappLike(p.govOapp).allowlistEnabled() == p.allowlistEnabled, "MigrationInit/allowlist-enabled-mismatch");
         }
 
         _migrateLockedTokens(p.nttManager, p.oftAdapter);
@@ -409,29 +423,33 @@ library MigrationInit {
 
     function initMigrationStep2(
         address oftAdapter,
-        bytes32 newMintAuthority,
-        uint128 gasLimit,
-        address govOapp, 
         bytes32 oftStore, 
         bytes32 oftProgramId,
+        address govOapp, 
+        bytes32 newGovProgramId,
+        bytes32 newMintAuthority,
+        uint128 gasLimit,
         uint48  outboundWindow,
         uint256 outboundLimit,
         uint48  inboundWindow,
         uint256 inboundLimit,
-        uint8   rlAccountingType
+        uint8   rlAccountingType,
+        bool    allowlistEnabled
     ) internal {
         MigrationStep2Params memory p = MigrationStep2Params({
             oftAdapter:           oftAdapter,
-            newMintAuthority:     newMintAuthority,
-            gasLimit:             gasLimit,
-            govOapp:              govOapp,
             oftStore:             oftStore,
             oftProgramId:         oftProgramId,
+            govOapp:              govOapp,
+            newGovProgramId:      newGovProgramId,
+            newMintAuthority:     newMintAuthority,
+            gasLimit:             gasLimit,
             outboundWindow:       outboundWindow,
             outboundLimit:        outboundLimit,
             inboundWindow:        inboundWindow,
             inboundLimit:         inboundLimit,
             rlAccountingType:     rlAccountingType,
+            allowlistEnabled:     allowlistEnabled,
             nttManager:           NTT_MANAGER,
             nttProgramId:         NTT_PROGRAM_ID,
             nttConfigPda:         NTT_CONFIG_PDA,
