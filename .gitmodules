@@ -6,13 +6,13 @@
 	url = https://github.com/makerdao/dss-test
 [submodule "lib/sky-ntt-migration"]
 	path = lib/sky-ntt-migration
-	url = git@github.com:crocodiledundalk/sky-ntt-migration
+	url = https://github.com/crocodiledundalk/sky-ntt-migration
 	branch = evm-oft-migration
 [submodule "lib/sky-oapp-oft"]
 	path = lib/sky-oapp-oft
-	url = git@github.com:sky-ecosystem/sky-oapp-oft.git
+	url = https://github.com/sky-ecosystem/sky-oapp-oft.git
 	branch = milestone-1
 [submodule "lib/sky-oapp-gov"]
 	path = lib/sky-oapp-gov
-	url = git@github.com:sky-ecosystem/sky-oapp-oft.git
+	url = https://github.com/sky-ecosystem/sky-oapp-oft.git
 	branch = governance

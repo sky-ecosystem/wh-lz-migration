@@ -16,7 +16,7 @@
 
 pragma solidity ^0.8.21;
 
-import "dss-test/DssTest.sol";
+import { DssTest } from "dss-test/DssTest.sol";
 
 import { MigrationDeploy } from "deploy/MigrationDeploy.sol";
 import { MigrationInit } from "deploy/MigrationInit.sol";

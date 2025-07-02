@@ -1,9 +1,6 @@
-name: CI
+name: test
 
-on:
-  push:
-  pull_request:
-  workflow_dispatch:
+on: [push, pull_request]
 
 env:
   FOUNDRY_PROFILE: ci
@@ -20,24 +17,32 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Set up Node.js and install pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install -g pnpm
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
-
-      - name: Show Forge version
+        with:
+          version: nightly
+        
+      - name: Install LZ deps in submodules
         run: |
-          forge --version
-
-      - name: Run Forge fmt
-        run: |
-          forge fmt --check
-        id: fmt
-
+          cd lib/sky-oapp-gov && pnpm install && cd -
+          cd lib/sky-oapp-oft && pnpm install && cd -
+        id: lz_deps_install
+            
       - name: Run Forge build
         run: |
-          forge build --sizes
-        id: build
+          forge --version
+          forge build
+        id: forge_build
 
       - name: Run Forge tests
         run: |
           forge test -vvv
-        id: test
+        id: forge_test
+        env:
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
