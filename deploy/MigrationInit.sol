@@ -388,7 +388,6 @@ library MigrationInit {
         bytes32 custodyAta;
         bytes32 govProgramId;
         address wormhole;
-        address token;
         address owner;
         address endpoint;
         uint32  solEid;
@@ -405,7 +404,7 @@ library MigrationInit {
         (uint16 feeBps, bool enabled)         = oft.feeBps(p.solEid);
         (,uint48 outWindow,,uint256 outLimit) = oft.outboundRateLimits(p.solEid);
         (,uint48  inWindow,,uint256  inLimit) = oft.outboundRateLimits(p.solEid);
-        require(oft.token() == p.token,                                          "MigrationInit/token-mismatch");
+        require(oft.token() == NttManagerLike(p.nttManager).token(),             "MigrationInit/token-mismatch");
         require(oft.defaultFeeBps() == 0,                                        "MigrationInit/incorrect-default-fee");
         require(feeBps == 0 && !enabled,                                         "MigrationInit/incorrect-solana-fee");
         require(oft.paused(),                                                    "MigrationInit/not-paused");
@@ -458,7 +457,6 @@ library MigrationInit {
             custodyAta:           CUSTODY_ATA,
             govProgramId:         GOVERNANCE_PROGRAM_ID,
             wormhole:             WORMHOLE_CORE_BRIDGE,
-            token:                LOG.getAddress("USDS"),
             owner:                LOG.getAddress("MCD_PAUSE_PROXY"),
             endpoint:             ETH_LZ_ENDPOINT,
             solEid:               SOL_EID
