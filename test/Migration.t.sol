@@ -163,8 +163,7 @@ contract MigrationTest is DssTest {
             outboundLimit: rlConfigs[0].limit,
             inboundWindow: rlConfigs[0].window,
             inboundLimit: rlConfigs[0].limit,
-            rlAccountingType: 0,
-            allowlistEnabled: false
+            rlAccountingType: 0
         });  
         vm.stopPrank();
 

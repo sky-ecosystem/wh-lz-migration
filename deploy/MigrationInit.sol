@@ -58,8 +58,6 @@ interface EndpointLike {
 }
 
 interface GovOappLike is OAppLike {
-    function allowlistEnabled() external view returns (bool);
-
     struct MessagingFee {
         uint256 nativeFee;
         uint256 lzTokenFee;
@@ -379,7 +377,6 @@ library MigrationInit {
         uint48  inboundWindow;
         uint256 inboundLimit;
         uint8   rlAccountingType;
-        bool    allowlistEnabled;
         address nttManager;
         bytes32 nttProgramId;
         bytes32 nttConfigPda;
@@ -411,7 +408,6 @@ library MigrationInit {
         require(outWindow == p.outboundWindow && outLimit == p.outboundLimit,    "MigrationInit/outbound-rl-mismatch");
         require( inWindow == p.inboundWindow  &&  inLimit ==  p.inboundLimit,    "MigrationInit/inbound-rl-mismatch");
         require(oft.rateLimitAccountingType() == p.rlAccountingType ,            "MigrationInit/rl-accounting-mismatch");
-        require(GovOappLike(p.govOapp).allowlistEnabled() == p.allowlistEnabled, "MigrationInit/allowlist-enabled-mismatch");
         }
 
         _migrateLockedTokens(p.nttManager, p.oftAdapter);
@@ -432,8 +428,7 @@ library MigrationInit {
         uint256 outboundLimit,
         uint48  inboundWindow,
         uint256 inboundLimit,
-        uint8   rlAccountingType,
-        bool    allowlistEnabled
+        uint8   rlAccountingType
     ) internal {
         MigrationStep2Params memory p = MigrationStep2Params({
             oftAdapter:           oftAdapter,
@@ -448,7 +443,6 @@ library MigrationInit {
             inboundWindow:        inboundWindow,
             inboundLimit:         inboundLimit,
             rlAccountingType:     rlAccountingType,
-            allowlistEnabled:     allowlistEnabled,
             nttManager:           NTT_MANAGER,
             nttProgramId:         NTT_PROGRAM_ID,
             nttConfigPda:         NTT_CONFIG_PDA,
