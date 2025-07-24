@@ -411,8 +411,9 @@ library MigrationInit {
         }
 
         _migrateLockedTokens(p.nttManager, p.oftAdapter);
-        _transferMintAuthority(p.wormhole, p.govProgramId, p.nttProgramId, p.nttConfigPda, p.nttTokenAuthorityPda, p.usdsMintAddr, p.custodyAta, p.newMintAuthority);
         _activateEthLZBridge(p.oftAdapter);
+
+        _transferMintAuthority(p.wormhole, p.govProgramId, p.nttProgramId, p.nttConfigPda, p.nttTokenAuthorityPda, p.usdsMintAddr, p.custodyAta, p.newMintAuthority);
         _activateSolLZBridge(p.owner, p.gasLimit, p.solEid, p.govOapp, p.oftStore, p.oftProgramId);
     }
 
