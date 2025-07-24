@@ -23,8 +23,8 @@ Prior to the execution of Spell 2, the new LZ Governance OApp and the new LZ USD
 ### Spell 2
 
 - Transfer the locked tokens from the Ethereum NTT Manager to the Ethereum side of the LZ Token bridge
-- Transfer the mint authority from the Solana NTT Manager program's PDA to the Solana LZ Token bridge program's PDA
 - Unpause the Ethereum side of the LZ Token bridge
+- Transfer the mint authority from the Solana NTT Manager program's PDA to the Solana LZ Token bridge program's PDA
 - Unpause the Solana side of the LZ Token bridge
 
 ## Migration functions
