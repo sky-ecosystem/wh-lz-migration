@@ -400,7 +400,7 @@ library MigrationInit {
         OFTAdapterLike oft = OFTAdapterLike(p.oftAdapter);
         (uint16 feeBps, bool enabled)         = oft.feeBps(p.solEid);
         (,uint48 outWindow,,uint256 outLimit) = oft.outboundRateLimits(p.solEid);
-        (,uint48  inWindow,,uint256  inLimit) = oft.outboundRateLimits(p.solEid);
+        (,uint48  inWindow,,uint256  inLimit) = oft.inboundRateLimits(p.solEid);
         require(oft.token() == NttManagerLike(p.nttManager).token(),             "MigrationInit/token-mismatch");
         require(oft.defaultFeeBps() == 0,                                        "MigrationInit/incorrect-default-fee");
         require(feeBps == 0 && !enabled,                                         "MigrationInit/incorrect-solana-fee");
