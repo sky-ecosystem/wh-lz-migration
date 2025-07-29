@@ -43,6 +43,15 @@ interface OAppLike {
 }
 
 interface OFTAdapterLike is OAppLike {
+    struct RateLimitConfig {
+        uint32 eid;
+        uint48 window;
+        uint256 limit;
+    }
+    enum RateLimitDirection {
+        Inbound,
+        Outbound
+    }
     function token() external view returns (address);
     function defaultFeeBps() external view returns (uint16);
     function feeBps(uint32) external view returns (uint16, bool);
@@ -51,6 +60,7 @@ interface OFTAdapterLike is OAppLike {
     function outboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
     function inboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
     function rateLimitAccountingType() external view returns (uint8);
+    function setRateLimits(RateLimitConfig[] calldata _rateLimitConfigs, RateLimitDirection _direction) external;
 }
 
 interface EndpointLike {
@@ -341,8 +351,12 @@ library MigrationInit {
         });
     }
 
-    function _activateEthLZBridge(address oftAdapter) internal {
-        OFTAdapterLike(oftAdapter).unpause();
+    function _activateEthLZBridge(address oftAdapter, uint48 outboundWindow, uint256 outboundLimit, uint48 inboundWindow, uint256 inboundLimit) internal {
+        OFTAdapterLike.RateLimitConfig[] memory rlConfigs = new OFTAdapterLike.RateLimitConfig[](1);
+        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(SOL_EID, outboundWindow, outboundLimit);
+        OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Outbound);
+        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(SOL_EID,  inboundWindow,  inboundLimit);
+        OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Inbound);
     }
 
     function _activateSolLZBridge(address owner, uint128 gasLimit, uint32 chainId, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
@@ -399,19 +413,19 @@ library MigrationInit {
         {
         OFTAdapterLike oft = OFTAdapterLike(p.oftAdapter);
         (uint16 feeBps, bool enabled)         = oft.feeBps(p.solEid);
-        (,uint48 outWindow,,uint256 outLimit) = oft.outboundRateLimits(p.solEid);
-        (,uint48  inWindow,,uint256  inLimit) = oft.inboundRateLimits(p.solEid);
-        require(oft.token() == NttManagerLike(p.nttManager).token(),             "MigrationInit/token-mismatch");
-        require(oft.defaultFeeBps() == 0,                                        "MigrationInit/incorrect-default-fee");
-        require(feeBps == 0 && !enabled,                                         "MigrationInit/incorrect-solana-fee");
-        require(oft.paused(),                                                    "MigrationInit/not-paused");
-        require(outWindow == p.outboundWindow && outLimit == p.outboundLimit,    "MigrationInit/outbound-rl-mismatch");
-        require( inWindow == p.inboundWindow  &&  inLimit ==  p.inboundLimit,    "MigrationInit/inbound-rl-mismatch");
-        require(oft.rateLimitAccountingType() == p.rlAccountingType ,            "MigrationInit/rl-accounting-mismatch");
+        (,,,uint256 outLimit) = oft.outboundRateLimits(p.solEid);
+        (,,,uint256  inLimit) = oft.inboundRateLimits(p.solEid);
+        require(oft.token() == NttManagerLike(p.nttManager).token(),  "MigrationInit/token-mismatch");
+        require(oft.defaultFeeBps() == 0,                             "MigrationInit/incorrect-default-fee");
+        require(feeBps == 0 && !enabled,                              "MigrationInit/incorrect-solana-fee");
+        require(!oft.paused(),                                        "MigrationInit/paused");
+        require(outLimit == 0,                                        "MigrationInit/outbound-rl-nonzero");
+        require(inLimit  == 0,                                        "MigrationInit/inbound-rl-nonzero");
+        require(oft.rateLimitAccountingType() == p.rlAccountingType , "MigrationInit/rl-accounting-mismatch");
         }
 
         _migrateLockedTokens(p.nttManager, p.oftAdapter);
-        _activateEthLZBridge(p.oftAdapter);
+        _activateEthLZBridge(p.oftAdapter, p.outboundWindow, p.outboundLimit, p.inboundWindow, p.inboundLimit);
 
         _transferMintAuthority(p.wormhole, p.govProgramId, p.nttProgramId, p.nttConfigPda, p.nttTokenAuthorityPda, p.usdsMintAddr, p.custodyAta, p.newMintAuthority);
         _activateSolLZBridge(p.owner, p.gasLimit, p.solEid, p.govOapp, p.oftStore, p.oftProgramId);

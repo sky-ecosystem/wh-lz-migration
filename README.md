@@ -18,12 +18,12 @@ The migration is assumed to be executed over the course of 3 spells, as outlined
 
 After the execution of spell 1 and before the execution of spell 2, it is assumed that all in-flight transfers have been relayed to Ethereum or Solana. This will have been done manually if needed.
 
-Prior to the execution of Spell 2, the new LZ Governance OApp and the new LZ USDS Token bridge will have been deployed and configured (including setting its owner, delegate, peer, enforced options, and rate limit configuration in the case of the token bridge). The LZ USDS Token bridge will have been paused on both the Ethereum and Solana side.
+Prior to the execution of Spell 2, the new LZ Governance OApp and the new LZ USDS Token bridge will have been deployed and configured (including setting its owner, delegate, peer and enforced options). The Solana side of the LZ USDS Token bridge will have been paused and will have had its rate limit configuration set to its intended non-zero value. The Ethereum side of the LZ USDS Token bridge should remain unpaused and have its rate limit configuration set to zero (it will be set to a non-zero value in Spell 2).
 
 ### Spell 2
 
 - Transfer the locked tokens from the Ethereum NTT Manager to the Ethereum side of the LZ Token bridge
-- Unpause the Ethereum side of the LZ Token bridge
+- Set the rate limits of the Ethereum side of the LZ Token bridge to a non-zero value
 - Transfer the mint authority from the Solana NTT Manager program's PDA to the Solana LZ Token bridge program's PDA
 - Unpause the Solana side of the LZ Token bridge
 

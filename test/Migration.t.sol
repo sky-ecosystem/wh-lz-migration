@@ -130,13 +130,6 @@ contract MigrationTest is DssTest {
         vm.startPrank(pauseProxy);
         _initOapp(address(govOapp), newGovProgramId);
         _initOapp(address(oftAdapter), oftProgramId);
-        DoubleSidedRateLimiter.RateLimitConfig[] memory rlConfigs = new DoubleSidedRateLimiter.RateLimitConfig[](1);
-        rlConfigs[0] = DoubleSidedRateLimiter.RateLimitConfig(MigrationInit.SOL_EID, 1 days, 1_000_000 ether);
-        oftAdapter.setRateLimits(rlConfigs, DoubleSidedRateLimiter.RateLimitDirection.Outbound);
-        oftAdapter.setRateLimits(rlConfigs, DoubleSidedRateLimiter.RateLimitDirection.Inbound);
-        oftAdapter.setPauser(pauseProxy, true);
-        oftAdapter.pause();
-        assertTrue(oftAdapter.paused());
         SendParam memory sendParams = SendParam({
             dstEid: MigrationInit.SOL_EID,
             to: bytes32(uint256(0xdede)),
@@ -146,8 +139,12 @@ contract MigrationTest is DssTest {
             composeMsg: bytes(""),
             oftCmd: bytes("")
         });
-        vm.expectRevert(Pausable.EnforcedPause.selector);
-        oftAdapter.quoteSend(sendParams, false);
+
+        MessagingFee memory msgFee = oftAdapter.quoteSend(sendParams, false);
+        deal(usds, address(this), 1 ether, true);
+        TokenLike(usds).approve(address(oftAdapter), 1 ether);
+        vm.expectRevert(DoubleSidedRateLimiter.RateLimitExceeded.selector);
+        oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
 
         MigrationInit.initMigrationStep0(nttManagerImpV2, 0);
         MigrationInit.initMigrationStep1();
@@ -159,19 +156,23 @@ contract MigrationTest is DssTest {
             newGovProgramId: newGovProgramId,
             newMintAuthority: 0,
             gasLimit: 1_000_000,
-            outboundWindow: rlConfigs[0].window,
-            outboundLimit: rlConfigs[0].limit,
-            inboundWindow: rlConfigs[0].window,
-            inboundLimit: rlConfigs[0].limit,
+            outboundWindow: 1 days,
+            outboundLimit: 1_000_000 ether,
+            inboundWindow: 1 days,
+            inboundLimit: 1_000_000 ether,
             rlAccountingType: 0
         });  
         vm.stopPrank();
 
-        assertFalse(oftAdapter.paused());
+        (,uint48 outWindow,,uint256 outLimit) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
+        (,uint48  inWindow,,uint256  inLimit) = oftAdapter.inboundRateLimits(MigrationInit.SOL_EID);
+        assertEq(outWindow, 1 days);
+        assertEq(outLimit, 1_000_000 ether);
+        assertEq(inWindow, 1 days);
+        assertEq(inLimit, 1_000_000 ether);
         assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);
         assertEq(TokenLike(usds).balanceOf(address(oftAdapter)), escrowed);
 
-        MessagingFee memory msgFee = oftAdapter.quoteSend(sendParams, false);
         deal(usds, address(this), 1 ether, true);
         TokenLike(usds).approve(address(oftAdapter), 1 ether);
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
