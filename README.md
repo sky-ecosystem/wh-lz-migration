@@ -79,4 +79,26 @@ cargo test test_migration
 
 ### Solana LayerZero Tests
 
-TBD
+Generate a sample LayerZero governance payload using the library code and store it in `test/solana/layerzero/payloads.rs`:
+
+```
+forge test -vvvv --match-test testMigrationStep2 2>&1 | \
+grep 'emit PacketSent' | \
+head -n 1 | \
+awk -F'encodedPayload: 0x' '{print $2}' | \
+awk -F',' '{print substr($1, 227)}' | \
+awk '{printf "pub const PAYLOAD0: &str = \"%s\";\n", $0}' > test/solana/layerzero/payloads.rs
+```
+
+Copy the generated payloads and the wormhole governance tests that use them into the `lib/sky-oapp-gov/programs/governance` dependency:
+
+```
+cp -r test/solana/layerzero/* lib/sky-oapp-gov/programs/governance/tests/
+```
+
+Run the tests:
+
+```
+cd lib/sky-oapp-gov/programs/governance
+cargo test test_migration
+```

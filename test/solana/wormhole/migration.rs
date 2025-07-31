@@ -24,8 +24,6 @@ fn check_governance_payload(
     let h = hex::decode(payload_hex).unwrap();
     let actual = GovernanceMessage::deserialize(&mut h.as_slice()).unwrap();
 
-    assert_eq!(actual.data, expected_data);
-
     let expected = GovernanceMessage {
         governance_program_id: crate::ID,
         program_id,
@@ -83,7 +81,7 @@ fn test_migration_upgrade_ntt_imp() {
 
 
 #[test]
-fn test_migration_set_pause() {
+fn test_migration_set_paused() {
     check_governance_payload(
         PAYLOAD1,
         Pubkey::try_from("STTUVCMPuNbk21y1J6nqEGXSQ8HKvFmFBKnCvKHTrWn").unwrap(),
