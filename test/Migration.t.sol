@@ -52,10 +52,12 @@ contract MigrationTest is DssTest {
 
     address public pauseProxy;
     address public usds;
-    address public nttManagerImpV2;
+    address public nttImpV2;
 
-    bytes32 public oftProgramId = bytes32(uint256(0xbeef));
-    bytes32 public newGovProgramId = bytes32(uint256(0xb055));
+    bytes32 public nttImpV2SolBuff  = bytes32(uint256(0xbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf));
+    bytes32 public oftProgramId     = bytes32(uint256(0xbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeef));
+    bytes32 public newGovProgramId  = bytes32(uint256(0xb055b055b055b055b055b055b055b055b055b055b055b055b055b055b055b055));
+    bytes32 public newMintAuthority = bytes32(uint256(0x1717171717171717171717171717171717171717171717171717171717171717));
     
     function setUp() public {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
@@ -63,7 +65,7 @@ contract MigrationTest is DssTest {
         pauseProxy = chainlog.getAddress("MCD_PAUSE_PROXY");
         usds       = chainlog.getAddress("USDS");
 
-        nttManagerImpV2 = MigrationDeploy.deployMigration();
+        nttImpV2 = MigrationDeploy.deployMigration();
     }
 
     function testMigrationStep0() public {
@@ -71,7 +73,7 @@ contract MigrationTest is DssTest {
         vm.expectRevert(bytes(""));
         nttManager.migrateLockedTokens(address(this));
 
-        MigrationInit.initMigrationStep0(nttManagerImpV2, 0);
+        MigrationInit.initMigrationStep0(nttImpV2, nttImpV2SolBuff);
 
         nttManager.migrateLockedTokens(address(this));
         vm.stopPrank();
@@ -82,7 +84,7 @@ contract MigrationTest is DssTest {
         nttManager.isSendPaused();
 
         vm.startPrank(pauseProxy);
-        MigrationInit.initMigrationStep0(nttManagerImpV2, 0);
+        MigrationInit.initMigrationStep0(nttImpV2, nttImpV2SolBuff);
         MigrationInit.initMigrationStep1();
         vm.stopPrank();
 
@@ -146,7 +148,7 @@ contract MigrationTest is DssTest {
         vm.expectRevert(DoubleSidedRateLimiter.RateLimitExceeded.selector);
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
 
-        MigrationInit.initMigrationStep0(nttManagerImpV2, 0);
+        MigrationInit.initMigrationStep0(nttImpV2, nttImpV2SolBuff);
         MigrationInit.initMigrationStep1();
         MigrationInit.initMigrationStep2({
             oftAdapter: address(oftAdapter),
@@ -154,7 +156,7 @@ contract MigrationTest is DssTest {
             oftProgramId: oftProgramId,
             govOapp: address(govOapp),
             newGovProgramId: newGovProgramId,
-            newMintAuthority: 0,
+            newMintAuthority: newMintAuthority,
             gasLimit: 1_000_000,
             outboundWindow: 1 days,
             outboundLimit: 1_000_000 ether,

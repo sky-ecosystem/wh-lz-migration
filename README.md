@@ -46,3 +46,37 @@ These tests cover the Ethereum-side of the migration, but do not cover any cross
 ```
 forge test
 ```
+
+## Solana Tests
+
+Partial Solana tests are provided to help validate that the Wormhole and LayerZero payloads (built in Solidity by the library) are properly formed. These tests do not cover the execution of the target Solana program and should be complemented by proper end-to-end integration tests (not provided as part of this repo).
+
+### Solana Wormhole Tests
+
+Generate sample Wormhole governance payloads using the library code and store those in `test/solana/wormhole/payloads.rs`:
+
+```
+forge test -vvvv --match-test testMigrationStep2 2>&1 | \
+grep 'emit LogMessagePublished' | \
+awk -F'param3: 0x' '{print $2}' | \
+awk -F',' '{print $1}' | \
+awk '{printf "pub const PAYLOAD%d: &str = \"%s\";\n", NR-1, $0}' > test/solana/wormhole/payloads.rs
+```
+
+Copy the generated payloads and the wormhole governance tests that use them into the `lib/sky-ntt-migration/solana/programs/wormhole-governance` dependency:
+
+```
+mkdir lib/sky-ntt-migration/solana/programs/wormhole-governance/tests
+cp -r test/solana/wormhole/* lib/sky-ntt-migration/solana/programs/wormhole-governance/tests/
+```
+
+Run the tests:
+
+```
+cd lib/sky-ntt-migration/solana/programs/wormhole-governance
+cargo test test_migration
+```
+
+### Solana LayerZero Tests
+
+TBD
