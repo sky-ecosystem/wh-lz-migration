@@ -164,7 +164,6 @@ library MigrationInit {
                 uint16(accounts.length / 34)              // accountsLength, 2 bytes
             ),
             accounts,                                     // accounts (32+2)*accountsLength bytes                    
-            abi.encodePacked(uint16(data.length)),        // dataLength, 2 bytes
             data                                          // data
         );
 
