@@ -56,7 +56,7 @@ Partial Solana tests are provided to help validate that the Wormhole and LayerZe
 Generate sample Wormhole governance payloads using the library code and store those in `test/solana/wormhole/payloads.rs`:
 
 ```
-forge test -vvvv --match-test testMigrationStep2 2>&1 | \
+forge test -vvvv --match-test testGeneratePayload 2>&1 | \
 grep 'emit LogMessagePublished' | \
 awk -F'param3: 0x' '{print $2}' | \
 awk -F',' '{print $1}' | \
@@ -82,9 +82,8 @@ cargo test test_migration
 Generate a sample LayerZero governance payload using the library code and store it in `test/solana/layerzero/payloads.rs`:
 
 ```
-forge test -vvvv --match-test testMigrationStep2 2>&1 | \
+forge test -vvvv --match-test testGeneratePayload 2>&1 | \
 grep 'emit PacketSent' | \
-head -n 1 | \
 awk -F'encodedPayload: 0x' '{print $2}' | \
 awk -F',' '{print substr($1, 227)}' | \
 awk '{printf "pub const PAYLOAD0: &str = \"%s\";\n", $0}' > test/solana/layerzero/payloads.rs

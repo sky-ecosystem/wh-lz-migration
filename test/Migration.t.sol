@@ -32,8 +32,6 @@ import { SetConfigParam, IMessageLibManager } from "@layerzerolabs/lz-evm-protoc
 import { UlnConfig } from "@layerzerolabs/lz-evm-messagelib-v2/contracts/uln/UlnBase.sol";
 import { ExecutorConfig } from "@layerzerolabs/lz-evm-messagelib-v2/contracts/SendLibBase.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
-import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
-
 
 interface ChainlogLike {
     function getAddress(bytes32) external view returns (address);
@@ -179,5 +177,33 @@ contract MigrationTest is DssTest {
         deal(usds, address(this), 1 ether, true);
         TokenLike(usds).approve(address(oftAdapter), 1 ether);
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
+    }
+
+    // only used to generate a sample payload -- see README
+    function testGeneratePayload() public {
+        OFTAdapter oftAdapter = new OFTAdapter(usds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
+        GovernanceControllerOApp govOapp = new GovernanceControllerOApp(MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
+
+        vm.startPrank(pauseProxy);
+        _initOapp(address(govOapp), newGovProgramId);
+        _initOapp(address(oftAdapter), oftProgramId);
+
+        MigrationInit.initMigrationStep0(nttImpV2, nttImpV2SolBuff);
+        MigrationInit.initMigrationStep1();
+        MigrationInit.initMigrationStep2({
+            oftAdapter: address(oftAdapter),
+            oftStore: oftStore,
+            oftProgramId: oftProgramId,
+            govOapp: address(govOapp),
+            newGovProgramId: newGovProgramId,
+            newMintAuthority: newMintAuthority,
+            gasLimit: 1_000_000,
+            outboundWindow: 1 days,
+            outboundLimit: 1_000_000 ether,
+            inboundWindow: 1 days,
+            inboundLimit: 1_000_000 ether,
+            rlAccountingType: 0
+        });  
+        vm.stopPrank();
     }
 }

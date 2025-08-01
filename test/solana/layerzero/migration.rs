@@ -29,9 +29,8 @@ fn test_migration_unpause_oapp() {
     ];
 
     let hash_bytes = hash("global:set_oft_config".as_bytes()).to_bytes();
-    let discriminator = (&hash_bytes[..8]);
     let mut data = Vec::new();
-    data.extend_from_slice(&discriminator);
+    data.extend_from_slice(&hash_bytes[..8]);
     borsh::BorshSerialize::serialize(&SetOFTConfigParams::Paused(false), &mut data)
         .expect("Failed to serialize SetOFTConfigParams");
 

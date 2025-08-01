@@ -5,14 +5,12 @@ use wormhole_governance::ID;
 
 include!("payloads.rs");
 
-fn encode_anchor_ix_data(fn_name: &str, expected_args: &[u8]) -> Vec<u8> {
-    let mut expected_data = Vec::with_capacity(8 + expected_args.len());
-
+fn encode_anchor_ix_data(fn_name: &str, args: &[u8]) -> Vec<u8> {
+    let mut data = Vec::with_capacity(8 + args.len());
     let hash_bytes = hash(fn_name.as_bytes()).to_bytes();
-    expected_data.extend_from_slice(&hash_bytes[..8]);
-    expected_data.extend_from_slice(expected_args);
-
-    expected_data
+    data.extend_from_slice(&hash_bytes[..8]);
+    data.extend_from_slice(args);
+    data
 }
 
 fn check_governance_payload(
