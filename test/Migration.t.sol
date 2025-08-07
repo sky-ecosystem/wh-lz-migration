@@ -126,9 +126,17 @@ contract MigrationTest is DssTest {
         uint256 escrowed = TokenLike(usds).balanceOf(address(nttManager));
 
         OFTAdapter oftAdapter = new OFTAdapter(usds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
-        GovernanceControllerOApp govOapp = new GovernanceControllerOApp(MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
+        GovernanceControllerOApp govOapp = new GovernanceControllerOApp({
+            _endpoint: MigrationInit.ETH_LZ_ENDPOINT,
+            _delegate: pauseProxy,
+            _addInitialValidTarget: false,
+            _initialValidTargetSrcEid: 0,
+            _initialValidTargetOriginCaller: bytes32(0),
+            _initialValidTargetGovernedContract: address(0)
+        });
 
         vm.startPrank(pauseProxy);
+        govOapp.addValidCaller(pauseProxy);
         _initOapp(address(govOapp), newGovProgramId);
         _initOapp(address(oftAdapter), oftProgramId);
         SendParam memory sendParams = SendParam({
@@ -182,9 +190,17 @@ contract MigrationTest is DssTest {
     // only used to generate a sample payload -- see README
     function testGeneratePayload() public {
         OFTAdapter oftAdapter = new OFTAdapter(usds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
-        GovernanceControllerOApp govOapp = new GovernanceControllerOApp(MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
+        GovernanceControllerOApp govOapp = new GovernanceControllerOApp({
+            _endpoint: MigrationInit.ETH_LZ_ENDPOINT,
+            _delegate: pauseProxy,
+            _addInitialValidTarget: false,
+            _initialValidTargetSrcEid: 0,
+            _initialValidTargetOriginCaller: bytes32(0),
+            _initialValidTargetGovernedContract: address(0)
+        });
 
         vm.startPrank(pauseProxy);
+        govOapp.addValidCaller(pauseProxy);
         _initOapp(address(govOapp), newGovProgramId);
         _initOapp(address(oftAdapter), oftProgramId);
 
