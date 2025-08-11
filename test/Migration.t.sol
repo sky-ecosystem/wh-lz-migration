@@ -117,7 +117,7 @@ contract MigrationTest is DssTest {
         );
 
         EnforcedOptionParam[] memory opts = new EnforcedOptionParam[](1);
-        opts[0] = EnforcedOptionParam(MigrationInit.SOL_EID, 1, OptionsBuilder.newOptions().addExecutorLzReceiveOption(1_000_000, 0));
+        opts[0] = EnforcedOptionParam(MigrationInit.SOL_EID, 1, OptionsBuilder.newOptions().addExecutorLzReceiveOption(200_000, 2_500_000));
         IOAppOptionsType3(oapp).setEnforcedOptions(opts);
     }
 
@@ -170,7 +170,8 @@ contract MigrationTest is DssTest {
             govOapp: address(govOapp),
             newGovProgramId: newGovProgramId,
             newMintAuthority: newMintAuthority,
-            gasLimit: 1_000_000,
+            gas: 1_200_000,
+            value: 0,
             outboundWindow: 1 days,
             outboundLimit: 1_000_000 ether,
             inboundWindow: 1 days,
@@ -216,7 +217,8 @@ contract MigrationTest is DssTest {
             govOapp: address(govOapp),
             newGovProgramId: newGovProgramId,
             newMintAuthority: newMintAuthority,
-            gasLimit: 1_000_000,
+            gas: 1_200_000,
+            value: 0,
             outboundWindow: 1 days,
             outboundLimit: 1_000_000 ether,
             inboundWindow: 1 days,

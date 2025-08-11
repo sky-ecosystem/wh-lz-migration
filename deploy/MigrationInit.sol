@@ -151,18 +151,18 @@ library MigrationInit {
         GovOappLike.MessagingFee fee;
     }
 
-    function _publishLZMessage(address originCaller, uint128 gasLimit, uint32 solEid, address govOapp, bytes32 programId, bytes memory accounts, bytes memory data) internal {
+    function _publishLZMessage(address originCaller, uint128 gas, uint128 value, uint32 solEid, address govOapp, bytes32 programId, bytes memory accounts, bytes memory data) internal {
         PublishLZMessageStackExtension memory se;
 
         // The following yields the same result as doing:
-        // bytes memory extraOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gasLimit, 0);
+        // bytes memory extraOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gas, value);
         // but without the need to import OptionsBuilder
         se.extraOptions = abi.encodePacked( // see addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol
-            abi.encodePacked(uint16(3)), // Option TYPE_3
-            uint8(1),                    // ExecutorOptions.WORKER_ID
-            uint16(17),                  // (abi.encodePacked(gasLimit)).length.toUint16() + 1
-            uint8(1),                    // ExecutorOptions.OPTION_TYPE_LZRECEIVE
-            abi.encodePacked(gasLimit)   // ExecutorOptions.encodeLzReceiveOption(gasLimit, 0)
+            abi.encodePacked(uint16(3)),                                        // Option TYPE_3
+            uint8(1),                                                           // ExecutorOptions.WORKER_ID
+            value == 0 ? uint16(17) : uint16(33),                               // ExecutorOptions.encodeLzReceiveOption(gas, value).length.toUint16() + 1
+            uint8(1),                                                           // ExecutorOptions.OPTION_TYPE_LZRECEIVE
+            value == 0 ? abi.encodePacked(gas) : abi.encodePacked(gas, value)   // ExecutorOptions.encodeLzReceiveOption(gas, value)
         );
 
         se.message = bytes.concat(
@@ -322,9 +322,15 @@ library MigrationInit {
         require(oapp_.endpoint() == endpoint,                          "MigrationInit/endpoint-mismatch");
         require(oapp_.peers(solEid) == peer,                           "MigrationInit/peer-mismatch");
         require(EndpointLike(endpoint).delegates(oapp) == owner,       "MigrationInit/delegate-mismatch");
-        require(opts1.length == 22 && bytes6(opts1) == 0x000301001101, "MigrationInit/bad-enforced-opts-msg-type1"); // expecting [{ msgType: 1, optionType: ExecutorOptionType.LZ_RECEIVE, gas, value: 0 }], see encoding by addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol 
-        uint128 gas = uint128(uint256(bytes32(opts1) >> 80));
-        require(gas > 0 && gas <= 36_000_000,                          "MigrationInit/bad-enforced-opts-msg-type1-gas"); 
+        require(opts1.length == 38 && bytes6(opts1) == 0x000301002101, "MigrationInit/bad-enforced-opts-msg-type1"); // expecting [{ msgType: 1, optionType: ExecutorOptionType.LZ_RECEIVE, gas, value: 2_500_000 }], see encoding by addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol
+        uint128 gas_; uint128 val;
+        assembly { // opts1 layout: {header: 6 bytes}{gas: 16 bytes}{value: 16 bytes}
+            let ptr := add(opts1, 32)
+            gas_ := shr(80, mload(ptr))
+            val  := mload(add(ptr, 6))
+        }
+        require(gas_ <= 1_400_000,                                     "MigrationInit/bad-enforced-opts-msg-type1-gas"); // max 1.4m compute units, per https://solana.com/docs/core/fees#compute-units-and-limits
+        require(val  == 2_500_000,                                     "MigrationInit/bad-enforced-opts-msg-type1-value"); // assume 2.5m lamports enforced, per https://docs.layerzero.network/v2/developers/solana/oft/account#setting-enforced-options-inbound-to-solana
         require(opts2.length == 0,                                     "MigrationInit/bad-enforced-opts-msg-type2");
     }
 
@@ -369,18 +375,19 @@ library MigrationInit {
         OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Inbound);
     }
 
-    function _activateSolLZBridge(address owner, uint128 gasLimit, uint32 solEid, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
+    function _activateSolLZBridge(address owner, uint128 gas, uint128 value, uint32 solEid, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
         _publishLZMessage({
             originCaller: owner,
-            gasLimit:  gasLimit,
-            solEid:    solEid,
-            govOapp:   govOapp,
-            programId: oftProgramId,
-            accounts:  abi.encodePacked(
+            gas:          gas,
+            value:        value,
+            solEid:       solEid,
+            govOapp:      govOapp,
+            programId:    oftProgramId,
+            accounts:     abi.encodePacked(
                 bytes32("cpi_authority"), SIGNER,
                 oftStore,                 WRITABLE
             ),
-            data:      abi.encodePacked(
+            data:         abi.encodePacked(
                 bytes8(sha256("global:set_oft_config")), // Anchor discriminator for "SetOftConfig" instruction
                 bytes1(0x03),                            // enum variant tag for Paused
                 bytes1(0x00)                             // paused = false
@@ -395,7 +402,8 @@ library MigrationInit {
         address govOapp; 
         bytes32 newGovProgramId;
         bytes32 newMintAuthority;
-        uint128 gasLimit;
+        uint128 gas;
+        uint128 value;
         uint48  outboundWindow;
         uint256 outboundLimit;
         uint48  inboundWindow;
@@ -438,7 +446,7 @@ library MigrationInit {
         _activateEthLZBridge(p.oftAdapter, p.solEid, p.outboundWindow, p.outboundLimit, p.inboundWindow, p.inboundLimit);
 
         _transferMintAuthority(p.wormhole, p.govProgramId, p.nttProgramId, p.nttConfigPda, p.nttTokenAuthorityPda, p.usdsMintAddr, p.custodyAta, p.newMintAuthority);
-        _activateSolLZBridge(p.owner, p.gasLimit, p.solEid, p.govOapp, p.oftStore, p.oftProgramId);
+        _activateSolLZBridge(p.owner, p.gas, p.value, p.solEid, p.govOapp, p.oftStore, p.oftProgramId);
     }
 
     function initMigrationStep2(
@@ -448,7 +456,8 @@ library MigrationInit {
         address govOapp, 
         bytes32 newGovProgramId,
         bytes32 newMintAuthority,
-        uint128 gasLimit,
+        uint128 gas,
+        uint128 value,
         uint48  outboundWindow,
         uint256 outboundLimit,
         uint48  inboundWindow,
@@ -462,7 +471,8 @@ library MigrationInit {
             govOapp:              govOapp,
             newGovProgramId:      newGovProgramId,
             newMintAuthority:     newMintAuthority,
-            gasLimit:             gasLimit,
+            gas:                  gas,
+            value:                value,
             outboundWindow:       outboundWindow,
             outboundLimit:        outboundLimit,
             inboundWindow:        inboundWindow,
