@@ -361,11 +361,11 @@ library MigrationInit {
         });
     }
 
-    function _activateEthLZBridge(address oftAdapter, uint48 outboundWindow, uint256 outboundLimit, uint48 inboundWindow, uint256 inboundLimit) internal {
+    function _activateEthLZBridge(address oftAdapter, uint32 solEid, uint48 outboundWindow, uint256 outboundLimit, uint48 inboundWindow, uint256 inboundLimit) internal {
         OFTAdapterLike.RateLimitConfig[] memory rlConfigs = new OFTAdapterLike.RateLimitConfig[](1);
-        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(SOL_EID, outboundWindow, outboundLimit);
+        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(solEid, outboundWindow, outboundLimit);
         OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Outbound);
-        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(SOL_EID,  inboundWindow,  inboundLimit);
+        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(solEid,  inboundWindow,  inboundLimit);
         OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Inbound);
     }
 
@@ -435,7 +435,7 @@ library MigrationInit {
         }
 
         _migrateLockedTokens(p.nttManager, p.oftAdapter);
-        _activateEthLZBridge(p.oftAdapter, p.outboundWindow, p.outboundLimit, p.inboundWindow, p.inboundLimit);
+        _activateEthLZBridge(p.oftAdapter, p.solEid, p.outboundWindow, p.outboundLimit, p.inboundWindow, p.inboundLimit);
 
         _transferMintAuthority(p.wormhole, p.govProgramId, p.nttProgramId, p.nttConfigPda, p.nttTokenAuthorityPda, p.usdsMintAddr, p.custodyAta, p.newMintAuthority);
         _activateSolLZBridge(p.owner, p.gasLimit, p.solEid, p.govOapp, p.oftStore, p.oftProgramId);
