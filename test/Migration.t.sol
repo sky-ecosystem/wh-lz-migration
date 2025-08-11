@@ -79,15 +79,14 @@ contract MigrationTest is DssTest {
     }
 
     function testMigrationStep1() public {
-        vm.expectRevert(bytes(""));
-        nttManager.isSendPaused();
-
         vm.startPrank(pauseProxy);
         MigrationInit.initMigrationStep0(nttImpV2, nttImpV2SolBuff);
-        MigrationInit.initMigrationStep1();
-        vm.stopPrank();
+        assertFalse(nttManager.isSendPaused());
 
-        assertEq(nttManager.isSendPaused(), true);
+        MigrationInit.initMigrationStep1();
+
+        assertTrue(nttManager.isSendPaused());
+        vm.stopPrank();
     }
 
     function _initOapp(address oapp, bytes32 peer) internal {
@@ -123,14 +122,31 @@ contract MigrationTest is DssTest {
     }
 
     function testMigrationStep2() public {
-        uint256 escrowed = TokenLike(usds).balanceOf(address(nttManager));
-
         OFTAdapter oftAdapter = new OFTAdapter(usds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
-        GovernanceControllerOApp govOapp = new GovernanceControllerOApp(MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
-
+        GovernanceControllerOApp govOapp = new GovernanceControllerOApp({
+            _endpoint: MigrationInit.ETH_LZ_ENDPOINT,
+            _delegate: pauseProxy,
+            _addInitialValidTarget: false,
+            _initialValidTargetSrcEid: 0,
+            _initialValidTargetOriginCaller: bytes32(0),
+            _initialValidTargetGovernedContract: address(0)
+        });
         vm.startPrank(pauseProxy);
+        MigrationInit.initMigrationStep0(nttImpV2, nttImpV2SolBuff);
+        MigrationInit.initMigrationStep1();
+        govOapp.addValidCaller(pauseProxy);
         _initOapp(address(govOapp), newGovProgramId);
         _initOapp(address(oftAdapter), oftProgramId);
+        vm.stopPrank();
+
+        uint256 escrowed = TokenLike(usds).balanceOf(address(nttManager));
+        assertGt(escrowed, 0);
+        (,uint48 outWindow,,uint256 outLimit) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
+        (,uint48  inWindow,,uint256  inLimit) = oftAdapter.inboundRateLimits(MigrationInit.SOL_EID);
+        assertEq(outWindow, 0);
+        assertEq(outLimit, 0);
+        assertEq(inWindow, 0);
+        assertEq(inLimit, 0);
         SendParam memory sendParams = SendParam({
             dstEid: MigrationInit.SOL_EID,
             to: bytes32(uint256(0xdede)),
@@ -140,15 +156,13 @@ contract MigrationTest is DssTest {
             composeMsg: bytes(""),
             oftCmd: bytes("")
         });
-
         MessagingFee memory msgFee = oftAdapter.quoteSend(sendParams, false);
         deal(usds, address(this), 1 ether, true);
         TokenLike(usds).approve(address(oftAdapter), 1 ether);
         vm.expectRevert(DoubleSidedRateLimiter.RateLimitExceeded.selector);
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
 
-        MigrationInit.initMigrationStep0(nttImpV2, nttImpV2SolBuff);
-        MigrationInit.initMigrationStep1();
+        vm.startPrank(pauseProxy);
         MigrationInit.initMigrationStep2({
             oftAdapter: address(oftAdapter),
             oftStore: oftStore,
@@ -165,26 +179,31 @@ contract MigrationTest is DssTest {
         });  
         vm.stopPrank();
 
-        (,uint48 outWindow,,uint256 outLimit) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
-        (,uint48  inWindow,,uint256  inLimit) = oftAdapter.inboundRateLimits(MigrationInit.SOL_EID);
+        assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);
+        assertEq(TokenLike(usds).balanceOf(address(oftAdapter)), escrowed);
+        (,outWindow,,outLimit) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
+        (, inWindow,, inLimit) = oftAdapter.inboundRateLimits(MigrationInit.SOL_EID);
         assertEq(outWindow, 1 days);
         assertEq(outLimit, 1_000_000 ether);
         assertEq(inWindow, 1 days);
         assertEq(inLimit, 1_000_000 ether);
-        assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);
-        assertEq(TokenLike(usds).balanceOf(address(oftAdapter)), escrowed);
-
-        deal(usds, address(this), 1 ether, true);
-        TokenLike(usds).approve(address(oftAdapter), 1 ether);
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
     }
 
     // only used to generate a sample payload -- see README
     function testGeneratePayload() public {
         OFTAdapter oftAdapter = new OFTAdapter(usds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
-        GovernanceControllerOApp govOapp = new GovernanceControllerOApp(MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
+        GovernanceControllerOApp govOapp = new GovernanceControllerOApp({
+            _endpoint: MigrationInit.ETH_LZ_ENDPOINT,
+            _delegate: pauseProxy,
+            _addInitialValidTarget: false,
+            _initialValidTargetSrcEid: 0,
+            _initialValidTargetOriginCaller: bytes32(0),
+            _initialValidTargetGovernedContract: address(0)
+        });
 
         vm.startPrank(pauseProxy);
+        govOapp.addValidCaller(pauseProxy);
         _initOapp(address(govOapp), newGovProgramId);
         _initOapp(address(oftAdapter), oftProgramId);
 

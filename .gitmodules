@@ -15,4 +15,4 @@
 [submodule "lib/sky-oapp-gov"]
 	path = lib/sky-oapp-gov
 	url = https://github.com/sky-ecosystem/sky-oapp-oft
-	branch = governance
+	branch = audit-fix/governance

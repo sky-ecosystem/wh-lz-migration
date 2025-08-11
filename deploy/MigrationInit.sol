@@ -73,15 +73,17 @@ interface GovOappLike is OAppLike {
         uint256 lzTokenFee;
     }
     function quoteRawBytesAction(
-        bytes calldata message,
-        bytes calldata extraOptions,
-        bool payInLzToken
+        bytes calldata _message,
+        uint32 _dstEid,
+        bytes calldata _extraOptions,
+        bool _payInLzToken
     ) external view returns (MessagingFee memory fee);
     function sendRawBytesAction(
-        bytes calldata message,
-        bytes calldata extraOptions,
-        MessagingFee calldata fee,
-        address refundAddress
+        bytes calldata _message,
+        uint32 _dstEid,
+        bytes calldata _extraOptions,
+        MessagingFee calldata _fee,
+        address _refundAddress
     ) external payable;
 }
 
@@ -143,11 +145,19 @@ library MigrationInit {
         });
     }
 
-    function _publishLZMessage(address originCaller, uint128 gasLimit, uint32 chainId, address govOapp, bytes32 programId, bytes memory accounts, bytes memory data) internal {
+    struct PublishLZMessageStackExtension {
+        bytes extraOptions;
+        bytes message;
+        GovOappLike.MessagingFee fee;
+    }
+
+    function _publishLZMessage(address originCaller, uint128 gasLimit, uint32 solEid, address govOapp, bytes32 programId, bytes memory accounts, bytes memory data) internal {
+        PublishLZMessageStackExtension memory se;
+
         // The following yields the same result as doing:
         // bytes memory extraOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gasLimit, 0);
         // but without the need to import OptionsBuilder
-        bytes memory extraOptions = abi.encodePacked( // see addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol
+        se.extraOptions = abi.encodePacked( // see addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol
             abi.encodePacked(uint16(3)), // Option TYPE_3
             uint8(1),                    // ExecutorOptions.WORKER_ID
             uint16(17),                  // (abi.encodePacked(gasLimit)).length.toUint16() + 1
@@ -155,10 +165,9 @@ library MigrationInit {
             abi.encodePacked(gasLimit)   // ExecutorOptions.encodeLzReceiveOption(gasLimit, 0)
         );
 
-        bytes memory message = bytes.concat(
+        se.message = bytes.concat(
             abi.encodePacked(
                 uint8(2),                                 // action, 1 byte
-                chainId,                                  // chainId, 4 bytes (30168 for Solana mainnet; 40168 for Solana testnet)
                 bytes32(uint256(uint160(originCaller))),  // originCaller, 32 bytes
                 programId,                                // programId, 32 bytes
                 uint16(accounts.length / 34)              // accountsLength, 2 bytes
@@ -168,17 +177,19 @@ library MigrationInit {
         );
 
         // TODO: Decide if we prefer to get this fee off-chain
-        GovOappLike.MessagingFee memory fee = GovOappLike(govOapp).quoteRawBytesAction({
-            message: message,
-            extraOptions: extraOptions,
-            payInLzToken: false
+        se.fee = GovOappLike(govOapp).quoteRawBytesAction({
+            _message: se.message,
+            _dstEid: solEid,
+            _extraOptions: se.extraOptions,
+            _payInLzToken: false
         });
 
-        GovOappLike(govOapp).sendRawBytesAction{value: fee.nativeFee}({
-            message: message,
-            extraOptions: extraOptions,
-            fee: fee,
-            refundAddress: originCaller
+        GovOappLike(govOapp).sendRawBytesAction{value: se.fee.nativeFee}({
+            _message: se.message,
+            _dstEid: solEid,
+            _extraOptions: se.extraOptions,
+            _fee: se.fee,
+            _refundAddress: originCaller
         });
     }
 
@@ -350,19 +361,19 @@ library MigrationInit {
         });
     }
 
-    function _activateEthLZBridge(address oftAdapter, uint48 outboundWindow, uint256 outboundLimit, uint48 inboundWindow, uint256 inboundLimit) internal {
+    function _activateEthLZBridge(address oftAdapter, uint32 solEid, uint48 outboundWindow, uint256 outboundLimit, uint48 inboundWindow, uint256 inboundLimit) internal {
         OFTAdapterLike.RateLimitConfig[] memory rlConfigs = new OFTAdapterLike.RateLimitConfig[](1);
-        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(SOL_EID, outboundWindow, outboundLimit);
+        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(solEid, outboundWindow, outboundLimit);
         OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Outbound);
-        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(SOL_EID,  inboundWindow,  inboundLimit);
+        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(solEid,  inboundWindow,  inboundLimit);
         OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Inbound);
     }
 
-    function _activateSolLZBridge(address owner, uint128 gasLimit, uint32 chainId, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
+    function _activateSolLZBridge(address owner, uint128 gasLimit, uint32 solEid, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
         _publishLZMessage({
             originCaller: owner,
             gasLimit:  gasLimit,
-            chainId:   chainId,
+            solEid:    solEid,
             govOapp:   govOapp,
             programId: oftProgramId,
             accounts:  abi.encodePacked(
@@ -424,7 +435,7 @@ library MigrationInit {
         }
 
         _migrateLockedTokens(p.nttManager, p.oftAdapter);
-        _activateEthLZBridge(p.oftAdapter, p.outboundWindow, p.outboundLimit, p.inboundWindow, p.inboundLimit);
+        _activateEthLZBridge(p.oftAdapter, p.solEid, p.outboundWindow, p.outboundLimit, p.inboundWindow, p.inboundLimit);
 
         _transferMintAuthority(p.wormhole, p.govProgramId, p.nttProgramId, p.nttConfigPda, p.nttTokenAuthorityPda, p.usdsMintAddr, p.custodyAta, p.newMintAuthority);
         _activateSolLZBridge(p.owner, p.gasLimit, p.solEid, p.govOapp, p.oftStore, p.oftProgramId);
