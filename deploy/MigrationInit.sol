@@ -117,15 +117,16 @@ library MigrationInit {
     // python3 -c "import base58; print(base58.b58decode('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA').hex())"
     bytes32 constant SPL_TOKEN_PROGRAM_ID       = 0x06ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a9;
     // python3 -c "import base58; print(base58.b58decode('4CVeJ5oZPL77ewm9DdjEEnh6vLSWKvcPhzgvhpKcZRuL').hex())" # ATA derived from USDS (mint) and token_authority PDA (owner)
-    bytes32 constant CUSTODY_ATA                = 0x2f84d6207230f62740d15c068bc819bb107ebcb144b0c9fdd53de27b1814d36b;
+    // bytes32 constant CUSTODY_ATA                = 0x2f84d6207230f62740d15c068bc819bb107ebcb144b0c9fdd53de27b1814d36b;
 
     // Solana account metas
     bytes2 constant READONLY = bytes2(0x0000);
     bytes2 constant WRITABLE = bytes2(0x0001);
     bytes2 constant SIGNER   = bytes2(0x0100);
 
-    function _publishWHMessage(address wormhole, bytes32 govProgramId, bytes32 programId, bytes memory accounts, bytes memory data) internal {
+    function _publishWHMessage(address wormhole, uint256 maxFee, bytes32 govProgramId, bytes32 programId, bytes memory accounts, bytes memory data) internal {
         uint256 fee = WormholeLike(wormhole).messageFee();
+        require(fee <= maxFee, "MigrationInit/exceeds-max-fee"); 
         WormholeLike(wormhole).publishMessage{value: fee}({
             nonce: 0, 
             payload: bytes.concat( // see payload layout in lib/sky-ntt-migration/solana/programs/wormhole-governance/src/instructions/governance.rs
@@ -151,7 +152,7 @@ library MigrationInit {
         GovOappLike.MessagingFee fee;
     }
 
-    function _publishLZMessage(address originCaller, uint128 gas, uint128 value, uint32 solEid, address govOapp, bytes32 programId, bytes memory accounts, bytes memory data) internal {
+    function _publishLZMessage(uint256 maxFee, address originCaller, uint128 gas, uint128 value, uint32 solEid, address govOapp, bytes32 programId, bytes memory accounts, bytes memory data) internal {
         PublishLZMessageStackExtension memory se;
 
         // The following yields the same result as doing:
@@ -176,13 +177,13 @@ library MigrationInit {
             data                                          // data
         );
 
-        // TODO: Decide if we prefer to get this fee off-chain
         se.fee = GovOappLike(govOapp).quoteRawBytesAction({
             _message: se.message,
             _dstEid: solEid,
             _extraOptions: se.extraOptions,
             _payInLzToken: false
         });
+        require(se.fee.nativeFee <= maxFee, "MigrationInit/exceeds-max-fee"); 
 
         GovOappLike(govOapp).sendRawBytesAction{value: se.fee.nativeFee}({
             _message: se.message,
@@ -206,9 +207,10 @@ library MigrationInit {
         mgr.upgrade(nttManagerImpV2);
     }
 
-    function _upgradeSolNtt(address wormhole, bytes32 govProgramId, bytes32 nttProgramDataAddr, bytes32 nttProgramId, bytes32 buffer) internal {
+    function _upgradeSolNtt(address wormhole, uint256 maxFee, bytes32 govProgramId, bytes32 nttProgramDataAddr, bytes32 nttProgramId, bytes32 buffer) internal {
         _publishWHMessage({
             wormhole:     wormhole,
+            maxFee:       maxFee,
             govProgramId: govProgramId,
             programId:    BFT_LOADER_UPGRADABLE_ADDR, 
             accounts:     abi.encodePacked( // See https://github.com/solana-labs/solana/blob/7700cb3128c1f19820de67b81aa45d18f73d2ac0/sdk/program/src/loader_upgradeable_instruction.rs#L84
@@ -227,6 +229,7 @@ library MigrationInit {
     struct MigrationStep0Params {
         address nttManagerImpV2;
         bytes32 nttManagerImpV2SolBuffer;
+        uint256 maxWHFee;
         address nttManager;
         bytes32 nttProgramDataAddr; 
         bytes32 nttProgramId;
@@ -238,16 +241,18 @@ library MigrationInit {
         MigrationStep0Params memory p
     ) internal {
         _upgradeEthNtt(p.nttManagerImpV2, p.nttManager);
-        _upgradeSolNtt(p.wormhole, p.govProgramId, p.nttProgramDataAddr, p.nttProgramId, p.nttManagerImpV2SolBuffer);
+        _upgradeSolNtt(p.wormhole, p.maxWHFee, p.govProgramId, p.nttProgramDataAddr, p.nttProgramId, p.nttManagerImpV2SolBuffer);
     }
 
     function initMigrationStep0(
         address nttManagerImpV2,
-        bytes32 nttManagerImpV2SolBuffer
+        bytes32 nttManagerImpV2SolBuffer,
+        uint256 maxWHFee
     ) internal {
         MigrationStep0Params memory p = MigrationStep0Params({
             nttManagerImpV2:          nttManagerImpV2,
             nttManagerImpV2SolBuffer: nttManagerImpV2SolBuffer,
+            maxWHFee:                 maxWHFee,
             nttManager:               NTT_MANAGER,
             nttProgramDataAddr:       NTT_PROGRAM_DATA_ADDR,
             nttProgramId:             NTT_PROGRAM_ID,
@@ -263,18 +268,21 @@ library MigrationInit {
 
     function _pauseSolNttBridge(
         address wormhole,
+        uint256 maxFee,
         bytes32 govProgramId,
         bytes32 nttProgramId,
         bytes32 nttConfigPda
     ) internal {
         _publishWHMessage({
             wormhole:     wormhole,
+            maxFee:       maxFee,
             govProgramId: govProgramId,
             programId:    nttProgramId, 
             accounts:     abi.encodePacked( // See lib/sky-ntt-migration/solana/programs/native-token-transfers/src/instructions/admin.rs#L266
                 bytes32("owner"), SIGNER,   // owner
                 nttConfigPda,     WRITABLE  // config
             ),
+            // TODO -- WARNING: This will need to be changed to use a new pausing function that only pauses sends
             data:         abi.encodePacked(
                 bytes8(sha256("global:set_paused")),  // Anchor discriminator for "SetPaused" instruction
                 bytes1(0x01)                          // paused = true
@@ -283,6 +291,7 @@ library MigrationInit {
     }
 
     struct MigrationStep1Params {
+        uint256 maxWHFee;
         address nttManager;
         bytes32 nttProgramId;
         bytes32 nttConfigPda;
@@ -296,14 +305,16 @@ library MigrationInit {
         _pauseEthNttBridge(p.nttManager);
         _pauseSolNttBridge(
             p.wormhole,
+            p.maxWHFee,
             p.govProgramId,
             p.nttProgramId,
             p.nttConfigPda
         );
     }
 
-    function initMigrationStep1() internal {
+    function initMigrationStep1(uint256 maxWHFee) internal {
         MigrationStep1Params memory p = MigrationStep1Params({
+            maxWHFee:     maxWHFee,
             nttManager:   NTT_MANAGER,
             nttProgramId: NTT_PROGRAM_ID,
             nttConfigPda: NTT_CONFIG_PDA,
@@ -312,6 +323,7 @@ library MigrationInit {
         });
         initMigrationStep1(p);
     }
+
 
     function _sanityCheckOapp(address oapp, uint32 solEid, address owner, address endpoint, bytes32 peer) internal view {
         OAppLike oapp_ = OAppLike(oapp);
@@ -340,16 +352,18 @@ library MigrationInit {
 
     function _transferMintAuthority(
         address wormhole,
+        uint256 maxFee,
         bytes32 govProgramId,
         bytes32 nttProgramId,
         bytes32 nttConfigPda,
         bytes32 nttTokenAuthorityPda,
         bytes32 usdsMintAddr,
-        bytes32 custodyAta,
+        // bytes32 custodyAta,
         bytes32 newMintAuthority
     ) internal {
         _publishWHMessage({
             wormhole:     wormhole,
+            maxFee:       maxFee,
             govProgramId: govProgramId,
             programId:    nttProgramId, 
             accounts:     abi.encodePacked( // See lib/sky-ntt-migration/solana/programs/native-token-transfers/src/instructions/transfer_mint_authority.rs#L10
@@ -357,8 +371,8 @@ library MigrationInit {
                 nttConfigPda,         READONLY,          // config
                 nttTokenAuthorityPda, READONLY,          // token_authority
                 usdsMintAddr,         WRITABLE,          // mint
-                SPL_TOKEN_PROGRAM_ID, READONLY,          // token_program
-                custodyAta,           WRITABLE           // custody
+                SPL_TOKEN_PROGRAM_ID, READONLY           // token_program
+                // custodyAta,           WRITABLE        // TODO: is custody required? Current transfer_mint_authority implementation requires it but it seems redundent
             ),
             data:         abi.encodePacked(
                 bytes8(sha256("global:transfer_mint_authority")),
@@ -375,8 +389,9 @@ library MigrationInit {
         OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Inbound);
     }
 
-    function _activateSolLZBridge(address owner, uint128 gas, uint128 value, uint32 solEid, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
+    function _activateSolLZBridge(uint256 maxFee, address owner, uint128 gas, uint128 value, uint32 solEid, address govOapp, bytes32 oftStore, bytes32 oftProgramId) internal {
         _publishLZMessage({
+            maxFee:       maxFee,
             originCaller: owner,
             gas:          gas,
             value:        value,
@@ -395,6 +410,14 @@ library MigrationInit {
         });
     }
 
+    struct RateLimitsParams {
+        uint48  outboundWindow;
+        uint256 outboundLimit;
+        uint48  inboundWindow;
+        uint256 inboundLimit;
+        uint8   rlAccountingType;
+    }
+
     struct MigrationStep2Params {
         address oftAdapter;
         bytes32 oftStore; 
@@ -404,17 +427,15 @@ library MigrationInit {
         bytes32 newMintAuthority;
         uint128 gas;
         uint128 value;
-        uint48  outboundWindow;
-        uint256 outboundLimit;
-        uint48  inboundWindow;
-        uint256 inboundLimit;
-        uint8   rlAccountingType;
+        RateLimitsParams rl;
+        uint256 maxWHFee;
+        uint256 maxLZFee;
         address nttManager;
         bytes32 nttProgramId;
         bytes32 nttConfigPda;
         bytes32 nttTokenAuthorityPda;
         bytes32 usdsMintAddr;
-        bytes32 custodyAta;
+        // bytes32 custodyAta;
         bytes32 govProgramId;
         address wormhole;
         address owner;
@@ -439,14 +460,14 @@ library MigrationInit {
         require(!oft.paused(),                                        "MigrationInit/paused");
         require(outLimit == 0,                                        "MigrationInit/outbound-rl-nonzero");
         require(inLimit  == 0,                                        "MigrationInit/inbound-rl-nonzero");
-        require(oft.rateLimitAccountingType() == p.rlAccountingType , "MigrationInit/rl-accounting-mismatch");
+        require(oft.rateLimitAccountingType() == p.rl.rlAccountingType , "MigrationInit/rl-accounting-mismatch");
         }
 
         _migrateLockedTokens(p.nttManager, p.oftAdapter);
-        _activateEthLZBridge(p.oftAdapter, p.solEid, p.outboundWindow, p.outboundLimit, p.inboundWindow, p.inboundLimit);
+        _activateEthLZBridge(p.oftAdapter, p.solEid, p.rl.outboundWindow, p.rl.outboundLimit, p.rl.inboundWindow, p.rl.inboundLimit);
 
-        _transferMintAuthority(p.wormhole, p.govProgramId, p.nttProgramId, p.nttConfigPda, p.nttTokenAuthorityPda, p.usdsMintAddr, p.custodyAta, p.newMintAuthority);
-        _activateSolLZBridge(p.owner, p.gas, p.value, p.solEid, p.govOapp, p.oftStore, p.oftProgramId);
+        _transferMintAuthority(p.wormhole, p.maxWHFee, p.govProgramId, p.nttProgramId, p.nttConfigPda, p.nttTokenAuthorityPda, p.usdsMintAddr, p.newMintAuthority);
+        _activateSolLZBridge(p.maxLZFee, p.owner, p.gas, p.value, p.solEid, p.govOapp, p.oftStore, p.oftProgramId);
     }
 
     function initMigrationStep2(
@@ -458,11 +479,9 @@ library MigrationInit {
         bytes32 newMintAuthority,
         uint128 gas,
         uint128 value,
-        uint48  outboundWindow,
-        uint256 outboundLimit,
-        uint48  inboundWindow,
-        uint256 inboundLimit,
-        uint8   rlAccountingType
+        RateLimitsParams memory rl,
+        uint256 maxWHFee,
+        uint256 maxLZFee
     ) internal {
         MigrationStep2Params memory p = MigrationStep2Params({
             oftAdapter:           oftAdapter,
@@ -473,17 +492,15 @@ library MigrationInit {
             newMintAuthority:     newMintAuthority,
             gas:                  gas,
             value:                value,
-            outboundWindow:       outboundWindow,
-            outboundLimit:        outboundLimit,
-            inboundWindow:        inboundWindow,
-            inboundLimit:         inboundLimit,
-            rlAccountingType:     rlAccountingType,
+            rl:                   rl,
+            maxWHFee:             maxWHFee,
+            maxLZFee:             maxLZFee,
             nttManager:           NTT_MANAGER,
             nttProgramId:         NTT_PROGRAM_ID,
             nttConfigPda:         NTT_CONFIG_PDA,
             nttTokenAuthorityPda: NTT_TOKEN_AUTHORITY_PDA,
             usdsMintAddr:         USDS_MINT_ADDR,
-            custodyAta:           CUSTODY_ATA,
+            // custodyAta:           CUSTODY_ATA,
             govProgramId:         GOVERNANCE_PROGRAM_ID,
             wormhole:             WORMHOLE_CORE_BRIDGE,
             owner:                LOG.getAddress("MCD_PAUSE_PROXY"),
