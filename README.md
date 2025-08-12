@@ -29,7 +29,7 @@ Prior to the execution of Spell 2, the new LZ Governance OApp and the new LZ USD
 
 ## Migration functions
 
-Each of the above spells requires calling one dedicated function in the library. The init functions that take a struct as inputs are meant to be used on testnet as they allow specifying the relevant addresses for the pre-existing testnet wormhole deployment. The init functions that take a list of `address`, `bytes32` and integers as inputs are meant to be used in production as they use hardcoded values for the known mainnet wormhole deployment.
+Each of the above spells requires calling one dedicated init function in the library. The init functions come in two sets: variants of the functions meant to be used on testnet as they allow specifying the relevant addresses for the pre-existing testnet wormhole deployment and variants of the functions meant to be used in production as they use hardcoded values for the known mainnet wormhole deployment.
 
 ## Dependencies
 
@@ -45,59 +45,4 @@ These tests cover the Ethereum-side of the migration, but do not cover any cross
 
 ```
 forge test
-```
-
-## Solana Tests
-
-Partial Solana tests are provided to help validate that the Wormhole and LayerZero payloads (built in Solidity by the library) are properly formed. These tests do not cover the execution of the target Solana program and should be complemented by proper end-to-end integration tests (not provided as part of this repo).
-
-### Solana Wormhole Tests
-
-Generate sample Wormhole governance payloads using the library code and store those in `test/solana/wormhole/payloads.rs`:
-
-```
-forge test -vvvv --match-test testGeneratePayload 2>&1 | \
-grep 'emit LogMessagePublished' | \
-awk -F'param3: 0x' '{print $2}' | \
-awk -F',' '{print $1}' | \
-awk '{printf "pub const PAYLOAD%d: &str = \"%s\";\n", NR-1, $0}' > test/solana/wormhole/payloads.rs
-```
-
-Copy the generated payloads and the wormhole governance tests that use them into the `lib/sky-ntt-migration/solana/programs/wormhole-governance` dependency:
-
-```
-mkdir lib/sky-ntt-migration/solana/programs/wormhole-governance/tests
-cp -r test/solana/wormhole/* lib/sky-ntt-migration/solana/programs/wormhole-governance/tests/
-```
-
-Run the tests:
-
-```
-cd lib/sky-ntt-migration/solana/programs/wormhole-governance
-cargo test test_migration
-```
-
-### Solana LayerZero Tests
-
-Generate a sample LayerZero governance payload using the library code and store it in `test/solana/layerzero/payloads.rs`:
-
-```
-forge test -vvvv --match-test testGeneratePayload 2>&1 | \
-grep 'emit PacketSent' | \
-awk -F'encodedPayload: 0x' '{print $2}' | \
-awk -F',' '{print substr($1, 227)}' | \
-awk '{printf "pub const PAYLOAD0: &str = \"%s\";\n", $0}' > test/solana/layerzero/payloads.rs
-```
-
-Copy the generated payloads and the wormhole governance tests that use them into the `lib/sky-oapp-gov/programs/governance` dependency:
-
-```
-cp -r test/solana/layerzero/* lib/sky-oapp-gov/programs/governance/tests/
-```
-
-Run the tests:
-
-```
-cd lib/sky-oapp-gov/programs/governance
-cargo test test_migration
 ```

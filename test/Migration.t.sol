@@ -72,7 +72,7 @@ contract MigrationTest is DssTest {
         vm.expectRevert(bytes(""));
         nttManager.migrateLockedTokens(address(this));
 
-        MigrationInit.initMigrationStep0(nttImpV2, nttImpV2SolBuff, 0);
+        MigrationInit.initMigrationStep0(nttImpV2, 0, "");
 
         nttManager.migrateLockedTokens(address(this));
         vm.stopPrank();
@@ -80,10 +80,10 @@ contract MigrationTest is DssTest {
 
     function testMigrationStep1() public {
         vm.startPrank(pauseProxy);
-        MigrationInit.initMigrationStep0(nttImpV2, nttImpV2SolBuff, 0);
+        MigrationInit.initMigrationStep0(nttImpV2, 0, "");
         assertFalse(nttManager.isSendPaused());
 
-        MigrationInit.initMigrationStep1(0);
+        MigrationInit.initMigrationStep1(0, "");
 
         assertTrue(nttManager.isSendPaused());
         vm.stopPrank();
@@ -132,8 +132,8 @@ contract MigrationTest is DssTest {
             _initialValidTargetGovernedContract: address(0)
         });
         vm.startPrank(pauseProxy);
-        MigrationInit.initMigrationStep0(nttImpV2, nttImpV2SolBuff, 0);
-        MigrationInit.initMigrationStep1(0);
+        MigrationInit.initMigrationStep0(nttImpV2, 0, "");
+        MigrationInit.initMigrationStep1(0, "");
         govOapp.addValidCaller(pauseProxy);
         _initOapp(address(govOapp), newGovProgramId);
         _initOapp(address(oftAdapter), oftProgramId);
@@ -163,25 +163,25 @@ contract MigrationTest is DssTest {
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
 
         MigrationInit.RateLimitsParams memory rl = MigrationInit.RateLimitsParams({
-            outboundWindow:       1 days,
-            outboundLimit:        1_000_000 ether,
-            inboundWindow:        1 days,
-            inboundLimit:         1_000_000 ether,
-            rlAccountingType:     0
+            outboundWindow:   1 days,
+            outboundLimit:    1_000_000 ether,
+            inboundWindow:    1 days,
+            inboundLimit:     1_000_000 ether,
+            rlAccountingType: 0
         });
         vm.startPrank(pauseProxy);
         MigrationInit.initMigrationStep2({
             oftAdapter: address(oftAdapter),
-            oftStore: oftStore,
             oftProgramId: oftProgramId,
             govOapp: address(govOapp),
             newGovProgramId: newGovProgramId,
-            newMintAuthority: newMintAuthority,
             gas: 1_200_000,
             value: 0,
             rl: rl,
             maxWHFee: 0,
-            maxLZFee: 0.05 ether
+            maxLZFee: 0.05 ether,
+            whPayload: "",
+            lzPayload: abi.encodePacked(uint8(2), bytes32(uint256(uint160(pauseProxy))))
         });  
         vm.stopPrank();
 
@@ -194,47 +194,5 @@ contract MigrationTest is DssTest {
         assertEq(inWindow, 1 days);
         assertEq(inLimit, 1_000_000 ether);
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
-    }
-
-    // only used to generate a sample payload -- see README
-    function testGeneratePayload() public {
-        OFTAdapter oftAdapter = new OFTAdapter(usds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
-        GovernanceControllerOApp govOapp = new GovernanceControllerOApp({
-            _endpoint: MigrationInit.ETH_LZ_ENDPOINT,
-            _delegate: pauseProxy,
-            _addInitialValidTarget: false,
-            _initialValidTargetSrcEid: 0,
-            _initialValidTargetOriginCaller: bytes32(0),
-            _initialValidTargetGovernedContract: address(0)
-        });
-
-        vm.startPrank(pauseProxy);
-        govOapp.addValidCaller(pauseProxy);
-        _initOapp(address(govOapp), newGovProgramId);
-        _initOapp(address(oftAdapter), oftProgramId);
-
-        MigrationInit.initMigrationStep0(nttImpV2, nttImpV2SolBuff, 0);
-        MigrationInit.initMigrationStep1(0);
-        MigrationInit.RateLimitsParams memory rl = MigrationInit.RateLimitsParams({
-            outboundWindow:       1 days,
-            outboundLimit:        1_000_000 ether,
-            inboundWindow:        1 days,
-            inboundLimit:         1_000_000 ether,
-            rlAccountingType:     0
-        });
-        MigrationInit.initMigrationStep2({
-            oftAdapter: address(oftAdapter),
-            oftStore: oftStore,
-            oftProgramId: oftProgramId,
-            govOapp: address(govOapp),
-            newGovProgramId: newGovProgramId,
-            newMintAuthority: newMintAuthority,
-            gas: 1_200_000,
-            value: 0,
-            rl: rl,
-            maxWHFee: 0,
-            maxLZFee: 0.05 ether
-        });  
-        vm.stopPrank();
     }
 }
