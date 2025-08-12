@@ -159,7 +159,7 @@ library MigrationInit {
         // bytes memory extraOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gas, value);
         // but without the need to import OptionsBuilder
         se.extraOptions = abi.encodePacked( // see addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol
-            abi.encodePacked(uint16(3)),                                        // Option TYPE_3
+            abi.encodePacked(uint16(3)),                                        // Options Type "3" (TYPE_3), the only options type currently supported by LZ
             uint8(1),                                                           // ExecutorOptions.WORKER_ID
             value == 0 ? uint16(17) : uint16(33),                               // ExecutorOptions.encodeLzReceiveOption(gas, value).length.toUint16() + 1
             uint8(1),                                                           // ExecutorOptions.OPTION_TYPE_LZRECEIVE
