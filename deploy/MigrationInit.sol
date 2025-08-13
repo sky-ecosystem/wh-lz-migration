@@ -56,7 +56,6 @@ interface OFTAdapterLike is OAppLike {
     function defaultFeeBps() external view returns (uint16);
     function feeBps(uint32) external view returns (uint16, bool);
     function paused() external view returns (bool);
-    function unpause() external;
     function outboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
     function inboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
     function rateLimitAccountingType() external view returns (uint8);
