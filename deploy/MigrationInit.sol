@@ -237,15 +237,6 @@ library MigrationInit {
         require(opts2.length == 0,                                     "MigrationInit/bad-enforced-opts-msg-type2");
     }
 
-
-    function _activateEthLZBridge(address oftAdapter, uint32 solEid, uint48 outboundWindow, uint256 outboundLimit, uint48 inboundWindow, uint256 inboundLimit) internal {
-        OFTAdapterLike.RateLimitConfig[] memory rlConfigs = new OFTAdapterLike.RateLimitConfig[](1);
-        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(solEid, outboundWindow, outboundLimit);
-        OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Outbound);
-        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(solEid,  inboundWindow,  inboundLimit);
-        OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Inbound);
-    }
-
     struct RateLimitsParams {
         uint48  outboundWindow;
         uint256 outboundLimit;
@@ -279,7 +270,6 @@ library MigrationInit {
         // Sanity checks
         _sanityCheckOapp(p.oftAdapter, p.solEid, p.owner, p.endpoint, p.oftProgramId);
         _sanityCheckOapp(p.govOapp,    p.solEid, p.owner, p.endpoint, p.newGovProgramId);
-        {
         OFTAdapterLike oft = OFTAdapterLike(p.oftAdapter);
         (uint16 feeBps, bool enabled)         = oft.feeBps(p.solEid);
         (,,,uint256 outLimit) = oft.outboundRateLimits(p.solEid);
@@ -291,19 +281,16 @@ library MigrationInit {
         require(outLimit == 0,                                           "MigrationInit/outbound-rl-nonzero");
         require(inLimit  == 0,                                           "MigrationInit/inbound-rl-nonzero");
         require(oft.rateLimitAccountingType() == p.rl.rlAccountingType , "MigrationInit/rl-accounting-mismatch");
-        }
-
+        
         // Migrated Locked Tokens
         NttManagerLike(p.nttManager).migrateLockedTokens(p.oftAdapter);
 
-        {
         // Activate Ethereum LZ Bridge
         OFTAdapterLike.RateLimitConfig[] memory rlConfigs = new OFTAdapterLike.RateLimitConfig[](1);
         rlConfigs[0] = OFTAdapterLike.RateLimitConfig(p.solEid, p.rl.outboundWindow, p.rl.outboundLimit);
         OFTAdapterLike(p.oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Outbound);
         rlConfigs[0] = OFTAdapterLike.RateLimitConfig(p.solEid,  p.rl.inboundWindow,  p.rl.inboundLimit);
         OFTAdapterLike(p.oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Inbound);
-        }
         
         // Transfer Mint Authority
         _publishWHMessage({

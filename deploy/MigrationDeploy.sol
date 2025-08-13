@@ -26,8 +26,7 @@ library MigrationDeploy {
     ChainlogLike constant LOG = ChainlogLike(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
 
     function deployMigration() internal returns (address nttManagerImpV2) {
-
-         // constructor params chosen identical to NttManager Implementation V1 @ 0x37c618755832ef5ca44FA88BF1CCdCe46f30b479
+        // constructor params chosen identical to NttManager Implementation V1 @ 0x37c618755832ef5ca44FA88BF1CCdCe46f30b479
         nttManagerImpV2 = address(new NttManager({ 
             _token: LOG.getAddress("USDS"),
             _mode: IManagerBase.Mode.LOCKING,
