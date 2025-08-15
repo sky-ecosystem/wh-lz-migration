@@ -42,11 +42,25 @@ interface TokenLike {
     function balanceOf(address) external view returns (uint256);
 }
 
+interface WormholeLike {
+    function nextSequence(address) external view returns (uint64);
+}
+
+interface EndpointLike {
+    function outboundNonce(address, uint32, bytes32) external view returns (uint64);
+    function getSendLibrary(address, uint32) external view returns (address);
+}
+
 contract MigrationTest is DssTest {
     using OptionsBuilder for bytes;
 
     ChainlogLike public chainlog = ChainlogLike(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
     NttManager   public nttManager = NttManager(0x7d4958454a3f520bDA8be764d06591B054B0bf33);
+    WormholeLike public wormhole = WormholeLike(0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B);
+    EndpointLike public endpoint = EndpointLike(0x1a44076050125825900e736c501f859c50fE728c);
+
+    event LogMessagePublished(address indexed sender, uint64 sequence, uint32 nonce, bytes payload, uint8 consistencyLevel);
+    event PacketSent(bytes encodedPayload, bytes options, address sendLibrary);
 
     address public pauseProxy;
     address public usds;
@@ -64,26 +78,75 @@ contract MigrationTest is DssTest {
         nttImpV2 = MigrationDeploy.deployMigration();
     }
 
-    function testMigrationStep0() public {
+    function initMigrationStep0(
+        address nttManagerImpV2,
+        uint256 maxWHFee,
+        bytes memory payload
+    ) external {
         vm.startPrank(pauseProxy);
-        vm.expectRevert(bytes(""));
-        nttManager.migrateLockedTokens(address(this));
-
-        MigrationInit.initMigrationStep0(nttImpV2, 0, "");
-
-        nttManager.migrateLockedTokens(address(this));
+        MigrationInit.initMigrationStep0(nttManagerImpV2, maxWHFee, payload);
         vm.stopPrank();
     }
 
-    function testMigrationStep1() public {
+    function initMigrationStep1(
+        uint256 maxWHFee,
+        bytes memory payload
+    ) external {
         vm.startPrank(pauseProxy);
-        MigrationInit.initMigrationStep0(nttImpV2, 0, "");
+        MigrationInit.initMigrationStep1(maxWHFee, payload);
+        vm.stopPrank();
+    }
+
+    function initMigrationStep2(
+        address oftAdapter,
+        bytes32 oftProgramId_,
+        address govOapp,
+        bytes32 newGovProgramId_,
+        uint128 gas,
+        uint128 value,
+        MigrationInit.RateLimitsParams memory rl,
+        uint256 maxWHFee,
+        uint256 maxLZFee,
+        bytes memory whPayload,
+        bytes memory lzPayload
+    ) external {
+        vm.startPrank(pauseProxy);
+        MigrationInit.initMigrationStep2(
+            oftAdapter,
+            oftProgramId_,
+            govOapp,
+            newGovProgramId_,
+            gas,
+            value,
+            rl,
+            maxWHFee,
+            maxLZFee,
+            whPayload,
+            lzPayload
+        );
+        vm.stopPrank();
+    }
+
+    function testMigrationStep0() public {
+        vm.expectRevert(bytes(""));
+        vm.prank(pauseProxy); nttManager.migrateLockedTokens(address(this));
+
+        vm.expectEmit(true, true, true, true, address(wormhole));
+        emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy), 0, "123", 202);
+        this.initMigrationStep0(nttImpV2, 0, "123");
+
+        vm.prank(pauseProxy); nttManager.migrateLockedTokens(address(this));
+    }
+
+    function testMigrationStep1() public {
+        this.initMigrationStep0(nttImpV2, 0, "");
         assertFalse(nttManager.isSendPaused());
 
-        MigrationInit.initMigrationStep1(0, "");
+        vm.expectEmit(true, true, true, true, address(wormhole));
+        emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy), 0, "234", 202);
+        this.initMigrationStep1(0, "234");
 
         assertTrue(nttManager.isSendPaused());
-        vm.stopPrank();
     }
 
     function _initOapp(address oapp, bytes32 peer) internal {
@@ -128,9 +191,9 @@ contract MigrationTest is DssTest {
             _initialValidTargetOriginCaller: bytes32(0),
             _initialValidTargetGovernedContract: address(0)
         });
+        this.initMigrationStep0(nttImpV2, 0, "");
+        this.initMigrationStep1(0, "");
         vm.startPrank(pauseProxy);
-        MigrationInit.initMigrationStep0(nttImpV2, 0, "");
-        MigrationInit.initMigrationStep1(0, "");
         govOapp.addValidCaller(pauseProxy);
         _initOapp(address(govOapp), newGovProgramId);
         _initOapp(address(oftAdapter), oftProgramId);
@@ -138,12 +201,14 @@ contract MigrationTest is DssTest {
 
         uint256 escrowed = TokenLike(usds).balanceOf(address(nttManager));
         assertGt(escrowed, 0);
+        {
         (,uint48 outWindow,,uint256 outLimit) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
         (,uint48  inWindow,,uint256  inLimit) = oftAdapter.inboundRateLimits(MigrationInit.SOL_EID);
         assertEq(outWindow, 0);
         assertEq(outLimit, 0);
         assertEq(inWindow, 0);
         assertEq(inLimit, 0);
+        }
         SendParam memory sendParams = SendParam({
             dstEid: MigrationInit.SOL_EID,
             to: bytes32(uint256(0xdede)),
@@ -166,30 +231,47 @@ contract MigrationTest is DssTest {
             inboundLimit:     1_000_000 ether,
             rlAccountingType: 0
         });
-        vm.startPrank(pauseProxy);
-        MigrationInit.initMigrationStep2({
+
+        uint64 newNonce = endpoint.outboundNonce(address(govOapp), 30168, newGovProgramId) + 1;
+        vm.expectEmit(true, true, true, true, address(wormhole));
+        emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy), 0, "456", 202);
+        vm.expectEmit(true, true, true, true, address(endpoint));
+        emit PacketSent(
+            abi.encodePacked(
+                uint8(1), // PACKET_VERSION
+                newNonce,
+                uint32(30101),
+                uint256(uint160(address(govOapp))),
+                uint32(30168),
+                newGovProgramId,
+                keccak256(abi.encodePacked(newNonce, uint32(30101), uint256(uint160(address(govOapp))), uint32(30168), newGovProgramId)),
+                uint8(2), bytes32(uint256(uint160(pauseProxy)))
+            ),
+            govOapp.combineOptions(30168, 1, abi.encodePacked(uint16(3), uint8(1), uint16(17), uint8(1), uint128(1_200_000))),
+            endpoint.getSendLibrary(address(govOapp), 30168)
+        );
+        this.initMigrationStep2({
             oftAdapter: address(oftAdapter),
-            oftProgramId: oftProgramId,
+            oftProgramId_: oftProgramId,
             govOapp: address(govOapp),
-            newGovProgramId: newGovProgramId,
+            newGovProgramId_: newGovProgramId,
             gas: 1_200_000,
             value: 0,
             rl: rl,
             maxWHFee: 0,
             maxLZFee: 0.05 ether,
-            whPayload: "",
+            whPayload: "456",
             lzPayload: abi.encodePacked(uint8(2), bytes32(uint256(uint160(pauseProxy))))
-        });  
-        vm.stopPrank();
+        });
 
         assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);
         assertEq(TokenLike(usds).balanceOf(address(oftAdapter)), escrowed);
-        (,outWindow,,outLimit) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
-        (, inWindow,, inLimit) = oftAdapter.inboundRateLimits(MigrationInit.SOL_EID);
-        assertEq(outWindow, 1 days);
-        assertEq(outLimit, 1_000_000 ether);
-        assertEq(inWindow, 1 days);
-        assertEq(inLimit, 1_000_000 ether);
+        (,uint48 outWindow2,,uint256 outLimit2) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
+        (,uint48  inWindow2,,uint256  inLimit2) = oftAdapter.inboundRateLimits(MigrationInit.SOL_EID);
+        assertEq(outWindow2, 1 days);
+        assertEq(outLimit2, 1_000_000 ether);
+        assertEq(inWindow2, 1 days);
+        assertEq(inLimit2, 1_000_000 ether);
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
     }
 }
