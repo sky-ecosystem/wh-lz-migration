@@ -52,11 +52,8 @@ contract MigrationTest is DssTest {
     address public usds;
     address public nttImpV2;
 
-    bytes32 public nttImpV2SolBuff  = bytes32(uint256(0xbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf));
     bytes32 public oftProgramId     = bytes32(uint256(0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f));
     bytes32 public newGovProgramId  = bytes32(uint256(0xb055b055b055b055b055b055b055b055b055b055b055b055b055b055b055b055));
-    bytes32 public newMintAuthority = bytes32(uint256(0x1717171717171717171717171717171717171717171717171717171717171717));
-    bytes32 public oftStore         = bytes32(uint256(0x0505050505050505050505050505050505050505050505050505050505050505));
 
     function setUp() public {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
