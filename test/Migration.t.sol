@@ -247,7 +247,7 @@ contract MigrationTest is DssTest {
                 keccak256(abi.encodePacked(newNonce, uint32(30101), uint256(uint160(address(govOapp))), uint32(30168), newGovProgramId)),
                 uint8(2), bytes32(uint256(uint160(pauseProxy)))
             ),
-            govOapp.combineOptions(30168, 1, abi.encodePacked(uint16(3), uint8(1), uint16(17), uint8(1), uint128(1_200_000))),
+            govOapp.enforcedOptions(30168, 1).addExecutorLzReceiveOption(1_200_000, 0),
             endpoint.getSendLibrary(address(govOapp), 30168)
         );
         this.initMigrationStep2({
