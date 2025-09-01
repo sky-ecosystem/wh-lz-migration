@@ -33,7 +33,7 @@ Each of the two spells above requires calling a dedicated init function in the l
 
 The `lib` directory contains the following dependencies relevant for the migration:
 
-- `sky-ntt-migration`: contains the new NTT implementations the NTT Managers are upgraded to in Spell 0.
+- `sky-ntt-migration`: contains the new NTT implementations used to upgrade the NTT Managers in Spell 0.
 - `sky-oapp-gov`: points to [@sky-ecosystem/sky-oapp-oft#governance](https://github.com/sky-ecosystem/sky-oapp-oft/tree/governance) and contains the EVM and SVM Governance OApp code.
 - `sky-oapp-oft`: points to [@sky-ecosystem/sky-oapp-oft#milestone-1](https://github.com/sky-ecosystem/sky-oapp-oft/tree/milestone-1) and contains the EVM LZ Token Bridge code.
 
