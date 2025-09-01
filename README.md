@@ -10,7 +10,6 @@ The migration is planned to be executed in two spells, as outlined below:
 
 - Upgrade the NTT Manager implementation on Ethereum to immediately prevent outbound transfers and to allow governance to transfer the escrowed tokens
 - Upgrade the NTT Manager implementation on Solana to immediately prevent outbound transfers and to allow governance to transfer the mint authority
-- Reduce the Governance Delay to 16 hours
 
 To prevent outbound transfers, the new EVM NTT Manager implementation has its `transfer` functions removed, and the new SVM NTT Manager implementation has its `transfer_burn` function removed.
 
