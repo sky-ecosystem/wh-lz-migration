@@ -12,11 +12,11 @@ The migration is planned to be executed in two spells, as outlined below:
 - Upgrade the NTT Manager implementation on Solana to immediately prevent outbound transfers and to allow governance to transfer the mint authority
 - Reduce the Governance Delay to 16 hours
 
-To prevent outbound transfers, the new EVM NTT Manager implementation has its `transfer` function removed, and the new SVM NTT Manager implementation has its `transfer_burn` function removed.
+To prevent outbound transfers, the new EVM NTT Manager implementation has its `transfer` functions removed, and the new SVM NTT Manager implementation has its `transfer_burn` function removed.
 
-After the execution of Spell 0, we check if there are any pending transfers in the inbound and outbound queues. Assuming that is not the case, Spell 1 can be voted on without further delay. In the unlikely scenario where the daily limit of the bridge has been reached and some transfers remain queued after the execution of Spell 0, voting on Spell 1 must be delayed by up to 32 hours (48h - 16h) to allow enough time for the queued transfers to clear both the outbound and inbound queues.
+After the execution of Spell 0, we check if there are any pending transfers in the inbound and outbound queues. Assuming that is not the case, Spell 1 can be voted on without further delay. In the unlikely scenario where the daily limit of the bridge has been reached and some transfers remain queued after the execution of Spell 0, voting on Spell 1 must be delayed long enough to ensure that the spell does not execute before both the outbound and inbound queues are cleared, which can take a few days in the worst case.
 
-If there are any in-flight transfers that still need to be relayed to the other side of the bridge after the execution of Spell 0, those will need to be manually relayed before Spell 1 is executed.
+If there are any in-flight transfers that still need to be relayed to the other side of the bridge after the execution of Spell 0, those might need to be manually relayed before Spell 1 is executed.
 
 Prior to the execution of Spell 1, the new LZ Governance OApp and the new LZ USDS Token bridge will have been deployed and configured (including setting its owner, delegate, peer, and enforced options). The Solana side of the LZ USDS Token bridge will already have had its rate limit configuration set to its intended non-zero value, and will thereby have been effectively already activated. The Ethereum side of the LZ USDS Token bridge will have its rate limit configuration set to zero (it will be set to a non-zero value in Spell 1, see below). Users are highly advised to refrain from using the bridge before Spell 1 has been executed.
 
@@ -34,7 +34,7 @@ Each of the two spells above requires calling a dedicated init function in the l
 
 The `lib` directory contains the following dependencies relevant for the migration:
 
-- `sky-ntt-migration`: contains the new NTT implementations the NTT Managers are upgraded to in spell 0.
+- `sky-ntt-migration`: contains the new NTT implementations the NTT Managers are upgraded to in Spell 0.
 - `sky-oapp-gov`: points to [@sky-ecosystem/sky-oapp-oft#governance](https://github.com/sky-ecosystem/sky-oapp-oft/tree/governance) and contains the EVM and SVM Governance OApp code.
 - `sky-oapp-oft`: points to [@sky-ecosystem/sky-oapp-oft#milestone-1](https://github.com/sky-ecosystem/sky-oapp-oft/tree/milestone-1) and contains the EVM LZ Token Bridge code.
 
