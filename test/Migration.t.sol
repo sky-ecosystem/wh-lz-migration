@@ -68,7 +68,7 @@ contract MigrationTest is DssTest {
 
         pauseProxy = chainlog.getAddress("MCD_PAUSE_PROXY");
         usds       = chainlog.getAddress("USDS");
-        susds       = chainlog.getAddress("SUSDS");
+        susds      = chainlog.getAddress("SUSDS");
 
         nttImpV2 = MigrationDeploy.deployMigration();
     }
