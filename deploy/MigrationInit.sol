@@ -26,7 +26,6 @@ interface NttManagerLike {
     function chainId() external view returns (uint16);
     function rateLimitDuration() external view returns (uint64);
     function upgrade(address) external;
-    function pauseSend() external;
     function migrateLockedTokens(address) external;
 }
 
@@ -66,26 +65,6 @@ interface EndpointLike {
     function delegates(address) external view returns (address);
 }
 
-interface GovOappLike is OAppLike {
-    struct MessagingFee {
-        uint256 nativeFee;
-        uint256 lzTokenFee;
-    }
-    function quoteRawBytesAction(
-        bytes calldata _message,
-        uint32 _dstEid,
-        bytes calldata _extraOptions,
-        bool _payInLzToken
-    ) external view returns (MessagingFee memory fee);
-    function sendRawBytesAction(
-        bytes calldata _message,
-        uint32 _dstEid,
-        bytes calldata _extraOptions,
-        MessagingFee calldata _fee,
-        address _refundAddress
-    ) external payable;
-}
-
 library MigrationInit {
     ChainlogLike constant LOG = ChainlogLike(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
 
@@ -104,42 +83,13 @@ library MigrationInit {
         });
     }
 
-    function _publishLZMessage(uint256 maxFee, address refundAddress, uint128 gas, uint128 value, uint32 solEid, address govOapp, bytes memory payload) internal {
-        // The following yields the same result as doing:
-        // bytes memory extraOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(gas, value);
-        // but without the need to import OptionsBuilder
-        bytes memory extraOptions = abi.encodePacked( // see addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol
-            abi.encodePacked(uint16(3)),                                        // Options Type "3" (TYPE_3), the only options type currently supported by LZ
-            uint8(1),                                                           // ExecutorOptions.WORKER_ID
-            value == 0 ? uint16(17) : uint16(33),                               // ExecutorOptions.encodeLzReceiveOption(gas, value).length.toUint16() + 1
-            uint8(1),                                                           // ExecutorOptions.OPTION_TYPE_LZRECEIVE
-            value == 0 ? abi.encodePacked(gas) : abi.encodePacked(gas, value)   // ExecutorOptions.encodeLzReceiveOption(gas, value)
-        );
-
-        GovOappLike.MessagingFee memory fee = GovOappLike(govOapp).quoteRawBytesAction({
-            _message: payload,
-            _dstEid: solEid,
-            _extraOptions: extraOptions,
-            _payInLzToken: false
-        });
-        require(fee.nativeFee <= maxFee, "MigrationInit/exceeds-max-fee"); 
-
-        GovOappLike(govOapp).sendRawBytesAction{value: fee.nativeFee}({
-            _message: payload,
-            _dstEid: solEid,
-            _extraOptions: extraOptions,
-            _fee: fee,
-            _refundAddress: refundAddress
-        });
-    }
-
     //////////////////////
     /////// Step 0 ///////
     //////////////////////
 
     function initMigrationStep0(
         address nttManagerImpV2,
-        uint256 maxWHFee,
+        uint256 maxFee,
         bytes memory payload,
         address nttManager,
         address wormhole
@@ -159,19 +109,19 @@ library MigrationInit {
         // Upgrade Solana NTT Manager
         _publishWHMessage({
             wormhole: wormhole,
-            maxFee:   maxWHFee,
+            maxFee:   maxFee,
             payload:  payload
         });
     }
 
     function initMigrationStep0(
         address nttManagerImpV2,
-        uint256 maxWHFee,
+        uint256 maxFee,
         bytes memory payload
     ) internal {
         initMigrationStep0({
             nttManagerImpV2: nttManagerImpV2,
-            maxWHFee:        maxWHFee,
+            maxFee:          maxFee,
             payload:         payload,
             nttManager:      NTT_MANAGER,
             wormhole:        WORMHOLE_CORE_BRIDGE
@@ -180,39 +130,6 @@ library MigrationInit {
 
     //////////////////////
     /////// Step 1 ///////
-    //////////////////////
-
-    function initMigrationStep1(
-        uint256 maxWHFee,
-        bytes memory payload,
-        address nttManager,
-        address wormhole
-    ) internal {
-        // Pause Ethereum NTT Manager
-        NttManagerLike(nttManager).pauseSend();
-
-        // Pause Solana NTT Manager
-        _publishWHMessage({
-            wormhole: wormhole,
-            maxFee:   maxWHFee,
-            payload:  payload
-        });
-    }
-
-    function initMigrationStep1(
-        uint256 maxWHFee,
-        bytes memory payload
-    ) internal {
-        initMigrationStep1({
-            maxWHFee:     maxWHFee,
-            payload:      payload,
-            nttManager:   NTT_MANAGER,
-            wormhole:     WORMHOLE_CORE_BRIDGE
-        });
-    }
-
-    //////////////////////
-    /////// Step 2 ///////
     //////////////////////
 
     function _sanityCheckOapp(address oapp, uint32 solEid, address owner, address endpoint, bytes32 peer) internal view {
@@ -236,6 +153,20 @@ library MigrationInit {
         require(opts2.length == 0,                                     "MigrationInit/bad-enforced-opts-msg-type2");
     }
 
+    function _sanityCheckOft(address oftAdapter, uint32 solEid, address token, uint8 rlAccountingType) internal view {
+        OFTAdapterLike oft = OFTAdapterLike(oftAdapter);
+        (uint16 feeBps, bool enabled) = oft.feeBps(solEid);
+        (,,,uint256 outLimit) = oft.outboundRateLimits(solEid);
+        (,,,uint256  inLimit) = oft.inboundRateLimits(solEid);
+        require(oft.token() == token,                               "MigrationInit/token-mismatch");
+        require(oft.defaultFeeBps() == 0,                           "MigrationInit/incorrect-default-fee");
+        require(feeBps == 0 && !enabled,                            "MigrationInit/incorrect-solana-fee");
+        require(!oft.paused(),                                      "MigrationInit/paused");
+        require(outLimit == 0,                                      "MigrationInit/outbound-rl-nonzero");
+        require(inLimit  == 0,                                      "MigrationInit/inbound-rl-nonzero");
+        require(oft.rateLimitAccountingType() == rlAccountingType , "MigrationInit/rl-accounting-mismatch");
+    }
+
     struct RateLimitsParams {
         uint48  outboundWindow;
         uint256 outboundLimit;
@@ -244,18 +175,14 @@ library MigrationInit {
         uint8   rlAccountingType;
     }
 
-    struct MigrationStep2Params {
+    struct MigrationStep1Params {
         address oftAdapter;
         bytes32 oftProgramId;
         address govOapp; 
         bytes32 newGovProgramId;
-        uint128 gas;
-        uint128 value;
         RateLimitsParams rl;
-        uint256 maxWHFee;
-        uint256 maxLZFee;
-        bytes whPayload;
-        bytes lzPayload;
+        uint256 maxFee;
+        bytes payload;
         address nttManager;
         address wormhole;
         address owner;
@@ -263,28 +190,18 @@ library MigrationInit {
         uint32  solEid;
     }
 
-    function initMigrationStep2(
-        MigrationStep2Params memory p
+    function initMigrationStep1(
+        MigrationStep1Params memory p
     ) internal {
         // Sanity checks
         _sanityCheckOapp(p.oftAdapter, p.solEid, p.owner, p.endpoint, p.oftProgramId);
         _sanityCheckOapp(p.govOapp,    p.solEid, p.owner, p.endpoint, p.newGovProgramId);
-        OFTAdapterLike oft = OFTAdapterLike(p.oftAdapter);
-        (uint16 feeBps, bool enabled)         = oft.feeBps(p.solEid);
-        (,,,uint256 outLimit) = oft.outboundRateLimits(p.solEid);
-        (,,,uint256  inLimit) = oft.inboundRateLimits(p.solEid);
-        require(oft.token() == NttManagerLike(p.nttManager).token(),     "MigrationInit/token-mismatch");
-        require(oft.defaultFeeBps() == 0,                                "MigrationInit/incorrect-default-fee");
-        require(feeBps == 0 && !enabled,                                 "MigrationInit/incorrect-solana-fee");
-        require(!oft.paused(),                                           "MigrationInit/paused");
-        require(outLimit == 0,                                           "MigrationInit/outbound-rl-nonzero");
-        require(inLimit  == 0,                                           "MigrationInit/inbound-rl-nonzero");
-        require(oft.rateLimitAccountingType() == p.rl.rlAccountingType , "MigrationInit/rl-accounting-mismatch");
-        
+        _sanityCheckOft(p.oftAdapter, p.solEid, NttManagerLike(p.nttManager).token(), p.rl.rlAccountingType);
+
         // Migrated Locked Tokens
         NttManagerLike(p.nttManager).migrateLockedTokens(p.oftAdapter);
 
-        // Activate Ethereum LZ Bridge
+        // Activate USDS Ethereum LZ Bridge
         OFTAdapterLike.RateLimitConfig[] memory rlConfigs = new OFTAdapterLike.RateLimitConfig[](1);
         rlConfigs[0] = OFTAdapterLike.RateLimitConfig(p.solEid, p.rl.outboundWindow, p.rl.outboundLimit);
         OFTAdapterLike(p.oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Outbound);
@@ -294,53 +211,51 @@ library MigrationInit {
         // Transfer Mint Authority
         _publishWHMessage({
             wormhole: p.wormhole,
-            maxFee:   p.maxWHFee,
-            payload:  p.whPayload
-        });
-        
-        // Activate Solana LZ Bridge
-        _publishLZMessage({
-            maxFee:        p.maxLZFee,
-            refundAddress: p.owner,
-            gas:           p.gas,
-            value:         p.value,
-            solEid:        p.solEid,
-            govOapp:       p.govOapp,
-            payload:       p.lzPayload
+            maxFee:   p.maxFee,
+            payload:  p.payload
         });
     }
 
-    function initMigrationStep2(
+    function initMigrationStep1(
         address oftAdapter,
         bytes32 oftProgramId,
         address govOapp,
         bytes32 newGovProgramId,
-        uint128 gas,
-        uint128 value,
         RateLimitsParams memory rl,
-        uint256 maxWHFee,
-        uint256 maxLZFee,
-        bytes memory whPayload,
-        bytes memory lzPayload
+        uint256 maxFee,
+        bytes memory payload
     ) internal {
-        MigrationStep2Params memory p = MigrationStep2Params({
+        MigrationStep1Params memory p = MigrationStep1Params({
             oftAdapter:      oftAdapter,
             oftProgramId:    oftProgramId,
             govOapp:         govOapp,
             newGovProgramId: newGovProgramId,
-            gas:             gas,
-            value:           value,
             rl:              rl,
-            maxWHFee:        maxWHFee,
-            maxLZFee:        maxLZFee,
-            whPayload:       whPayload,
-            lzPayload:       lzPayload,
+            maxFee:          maxFee,
+            payload:         payload,
             nttManager:      NTT_MANAGER,
             wormhole:        WORMHOLE_CORE_BRIDGE,
             owner:           LOG.getAddress("MCD_PAUSE_PROXY"),
             endpoint:        ETH_LZ_ENDPOINT,
             solEid:          SOL_EID
         });
-        initMigrationStep2(p);
+        initMigrationStep1(p);
+    }
+
+    function initSusdsBridge(
+        address oftAdapter,
+        bytes32 oftProgramId,
+        RateLimitsParams memory rl
+    ) internal {
+        // Sanity checks
+        _sanityCheckOapp(oftAdapter, SOL_EID, LOG.getAddress("MCD_PAUSE_PROXY"), ETH_LZ_ENDPOINT, oftProgramId);
+        _sanityCheckOft(oftAdapter, SOL_EID, LOG.getAddress("SUSDS"), rl.rlAccountingType);
+
+        // Activate sUSDS Ethereum LZ Bridge
+        OFTAdapterLike.RateLimitConfig[] memory rlConfigs = new OFTAdapterLike.RateLimitConfig[](1);
+        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(SOL_EID, rl.outboundWindow, rl.outboundLimit);
+        OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Outbound);
+        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(SOL_EID,  rl.inboundWindow,  rl.inboundLimit);
+        OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Inbound);
     }
 }

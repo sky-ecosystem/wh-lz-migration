@@ -29,6 +29,10 @@ Prior to the execution of Spell 1, the new LZ Governance OApp and the new LZ USD
 
 Each of the two spells above requires calling a dedicated init function in the library. The init functions come in two sets: variants of the functions meant to be used on testnet as they allow specifying the relevant addresses for the pre-existing testnet wormhole deployment and variants of the functions meant to be used in production as they use hardcoded values for the known mainnet wormhole deployment.
 
+## sUSDS initialization
+
+The library also provides an init function to activate the sUSDS LZ Bridge. This is assumed to be used after the migration steps described above have been completed. Before initializing the sUSDS LZ Bridge, the bridge will have been deployed and configured (including setting its owner, delegate, peer, and enforced options). The Solana side of the bridge will already have had its rate limit configuration set to its intended non-zero value, and will thereby have been effectively already activated. The Ethereum side of the bridge will have its rate limit configuration set to zero. As with the USDS bridge, users are highly advised to refrain from using the sUSDS bridge before its initialization function has been executed.
+
 ## Dependencies
 
 The `lib` directory contains the following dependencies relevant for the migration:
