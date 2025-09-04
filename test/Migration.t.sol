@@ -21,9 +21,9 @@ import { DssTest } from "dss-test/DssTest.sol";
 import { MigrationDeploy } from "deploy/MigrationDeploy.sol";
 import { MigrationInit } from "deploy/MigrationInit.sol";
 import { NttManager } from "lib/sky-ntt-migration/evm/src/NttManager/NttManager.sol";
-import { OFTAdapter } from "lib/sky-oapp-oft/contracts/OFTAdapter.sol";
-import { DoubleSidedRateLimiter } from "lib/sky-oapp-oft/contracts/oft-dsrl/DoubleSidedRateLimiter.sol";
-import { GovernanceControllerOApp } from "lib/sky-oapp-gov/contracts/GovernanceControllerOApp.sol";
+import { SkyOFTAdapter } from "lib/sky-oapp-oft/contracts/SkyOFTAdapter.sol";
+import { ISkyRateLimiter } from "lib/sky-oapp-oft/contracts/interfaces/ISkyRateLimiter.sol";
+import { GovernanceOAppSender } from "lib/sky-oapp-gov/contracts/GovernanceOAppSender.sol";
 
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import { IOAppOptionsType3, EnforcedOptionParam } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppOptionsType3.sol";
@@ -149,14 +149,10 @@ contract MigrationTest is DssTest {
     }
 
     function testMigrationStep1() public {
-        OFTAdapter oftAdapter = new OFTAdapter(usds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
-        GovernanceControllerOApp govOapp = new GovernanceControllerOApp({
+        SkyOFTAdapter oftAdapter = new SkyOFTAdapter(usds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
+        GovernanceOAppSender govOapp = new GovernanceOAppSender({
             _endpoint: MigrationInit.ETH_LZ_ENDPOINT,
-            _delegate: pauseProxy,
-            _addInitialValidTarget: false,
-            _initialValidTargetSrcEid: 0,
-            _initialValidTargetOriginCaller: bytes32(0),
-            _initialValidTargetGovernedContract: address(0)
+            _owner: pauseProxy
         });
         this.initMigrationStep0(nttImpV2, 0, "");
         vm.startPrank(pauseProxy);
@@ -186,7 +182,7 @@ contract MigrationTest is DssTest {
         MessagingFee memory msgFee = oftAdapter.quoteSend(sendParams, false);
         deal(usds, address(this), 1 ether, true);
         TokenLike(usds).approve(address(oftAdapter), 1 ether);
-        vm.expectRevert(DoubleSidedRateLimiter.RateLimitExceeded.selector);
+        vm.expectRevert(ISkyRateLimiter.RateLimitExceeded.selector);
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
 
         MigrationInit.RateLimitsParams memory rl = MigrationInit.RateLimitsParams({
@@ -221,7 +217,7 @@ contract MigrationTest is DssTest {
     }
 
     function testInitSusdsBridge() public {
-        OFTAdapter oftAdapter = new OFTAdapter(susds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
+        SkyOFTAdapter oftAdapter = new SkyOFTAdapter(susds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
         vm.startPrank(pauseProxy);
         _initOapp(address(oftAdapter), oftProgramId);
         vm.stopPrank();
@@ -244,7 +240,7 @@ contract MigrationTest is DssTest {
         MessagingFee memory msgFee = oftAdapter.quoteSend(sendParams, false);
         deal(susds, address(this), 1 ether, true);
         TokenLike(susds).approve(address(oftAdapter), 1 ether);
-        vm.expectRevert(DoubleSidedRateLimiter.RateLimitExceeded.selector);
+        vm.expectRevert(ISkyRateLimiter.RateLimitExceeded.selector);
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
 
         MigrationInit.RateLimitsParams memory rl = MigrationInit.RateLimitsParams({

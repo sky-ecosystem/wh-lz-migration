@@ -47,10 +47,6 @@ interface OFTAdapterLike is OAppLike {
         uint48 window;
         uint256 limit;
     }
-    enum RateLimitDirection {
-        Inbound,
-        Outbound
-    }
     function token() external view returns (address);
     function defaultFeeBps() external view returns (uint16);
     function feeBps(uint32) external view returns (uint16, bool);
@@ -58,7 +54,7 @@ interface OFTAdapterLike is OAppLike {
     function outboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
     function inboundRateLimits(uint32) external view returns (uint128, uint48, uint256, uint256);
     function rateLimitAccountingType() external view returns (uint8);
-    function setRateLimits(RateLimitConfig[] calldata _rateLimitConfigs, RateLimitDirection _direction) external;
+    function setRateLimits(RateLimitConfig[] calldata, RateLimitConfig[] calldata) external;
 }
 
 interface EndpointLike {
@@ -202,11 +198,11 @@ library MigrationInit {
         NttManagerLike(p.nttManager).migrateLockedTokens(p.oftAdapter);
 
         // Activate USDS Ethereum LZ Bridge
-        OFTAdapterLike.RateLimitConfig[] memory rlConfigs = new OFTAdapterLike.RateLimitConfig[](1);
-        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(p.solEid, p.rl.outboundWindow, p.rl.outboundLimit);
-        OFTAdapterLike(p.oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Outbound);
-        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(p.solEid,  p.rl.inboundWindow,  p.rl.inboundLimit);
-        OFTAdapterLike(p.oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Inbound);
+        OFTAdapterLike.RateLimitConfig[] memory inboundCfg  = new OFTAdapterLike.RateLimitConfig[](1);
+        OFTAdapterLike.RateLimitConfig[] memory outboundCfg = new OFTAdapterLike.RateLimitConfig[](1);
+        inboundCfg[0]  = OFTAdapterLike.RateLimitConfig(p.solEid, p.rl.inboundWindow,  p.rl.inboundLimit);
+        outboundCfg[0] = OFTAdapterLike.RateLimitConfig(p.solEid, p.rl.outboundWindow, p.rl.outboundLimit);
+        OFTAdapterLike(p.oftAdapter).setRateLimits(inboundCfg, outboundCfg);
         
         // Transfer Mint Authority
         _publishWHMessage({
@@ -252,10 +248,10 @@ library MigrationInit {
         _sanityCheckOft(oftAdapter, SOL_EID, LOG.getAddress("SUSDS"), rl.rlAccountingType);
 
         // Activate sUSDS Ethereum LZ Bridge
-        OFTAdapterLike.RateLimitConfig[] memory rlConfigs = new OFTAdapterLike.RateLimitConfig[](1);
-        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(SOL_EID, rl.outboundWindow, rl.outboundLimit);
-        OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Outbound);
-        rlConfigs[0] = OFTAdapterLike.RateLimitConfig(SOL_EID,  rl.inboundWindow,  rl.inboundLimit);
-        OFTAdapterLike(oftAdapter).setRateLimits(rlConfigs, OFTAdapterLike.RateLimitDirection.Inbound);
+        OFTAdapterLike.RateLimitConfig[] memory inboundCfg  = new OFTAdapterLike.RateLimitConfig[](1);
+        OFTAdapterLike.RateLimitConfig[] memory outboundCfg = new OFTAdapterLike.RateLimitConfig[](1);
+        inboundCfg[0]  = OFTAdapterLike.RateLimitConfig(SOL_EID, rl.inboundWindow,  rl.inboundLimit);
+        outboundCfg[0] = OFTAdapterLike.RateLimitConfig(SOL_EID, rl.outboundWindow, rl.outboundLimit);
+        OFTAdapterLike(oftAdapter).setRateLimits(inboundCfg, outboundCfg);
     }
 }
