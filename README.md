@@ -24,6 +24,7 @@ Prior to the execution of Spell 1, the new LZ Governance OApp and the new LZ USD
 - Transfer the locked tokens from the Ethereum NTT Manager to the Ethereum side of the LZ Token bridge
 - Set the rate limits of the Ethereum side of the LZ Token bridge to a non-zero value
 - Transfer the mint authority from the Solana NTT Manager program's PDA to the Solana LZ Token bridge program's PDA
+- Transfer the freeze authority from the Wormhole governance PDA to the LZ Governance OApp's CPI authority PDA that is controlled by Sky PauseProxy.
 
 ## Migration functions
 
