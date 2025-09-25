@@ -90,7 +90,8 @@ contract MigrationTest is DssTest {
         bytes32 newGovProgramId_,
         MigrationInit.RateLimitsParams memory rl,
         uint256 maxFee,
-        bytes memory payload
+        bytes memory transferMintAuthPayload,
+        bytes memory transferFreezeAuthPayload
     ) external {
         vm.startPrank(pauseProxy);
         MigrationInit.initMigrationStep1(
@@ -100,7 +101,8 @@ contract MigrationTest is DssTest {
             newGovProgramId_,
             rl,
             maxFee,
-            payload
+            transferMintAuthPayload,
+            transferFreezeAuthPayload
         );
         vm.stopPrank();
     }
@@ -195,6 +197,8 @@ contract MigrationTest is DssTest {
 
         vm.expectEmit(true, true, true, true, address(wormhole));
         emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy), 0, "456", 202);
+        vm.expectEmit(true, true, true, true, address(wormhole));
+        emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy) + 1, 0, "789", 202);
         this.initMigrationStep1({
             oftAdapter: address(oftAdapter),
             oftProgramId_: oftProgramId,
@@ -202,7 +206,8 @@ contract MigrationTest is DssTest {
             newGovProgramId_: newGovProgramId,
             rl: rl,
             maxFee: 0,
-            payload: "456"
+            transferMintAuthPayload: "456",
+            transferFreezeAuthPayload: "789"
         });
 
         assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);

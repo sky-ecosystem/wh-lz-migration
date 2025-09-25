@@ -69,9 +69,7 @@ library MigrationInit {
     address constant ETH_LZ_ENDPOINT      = 0x1a44076050125825900e736c501f859c50fE728c;
     uint32  constant SOL_EID              = 30168;
 
-    function _publishWHMessage(address wormhole, uint256 maxFee, bytes memory payload) internal {
-        uint256 fee = WormholeLike(wormhole).messageFee();
-        require(fee <= maxFee, "MigrationInit/exceeds-max-fee"); 
+    function _publishWHMessage(address wormhole, uint256 fee, bytes memory payload) internal {
         WormholeLike(wormhole).publishMessage{value: fee}({
             nonce: 0, 
             payload: payload,
@@ -103,9 +101,11 @@ library MigrationInit {
         mgr.upgrade(nttManagerImpV2);
 
         // Upgrade Solana NTT Manager
+        uint256 fee = WormholeLike(wormhole).messageFee();
+        require(fee <= maxFee, "MigrationInit/exceeds-max-fee"); 
         _publishWHMessage({
             wormhole: wormhole,
-            maxFee:   maxFee,
+            fee:      fee,
             payload:  payload
         });
     }
@@ -178,7 +178,8 @@ library MigrationInit {
         bytes32 newGovProgramId;
         RateLimitsParams rl;
         uint256 maxFee;
-        bytes payload;
+        bytes transferMintAuthPayload;
+        bytes transferFreezeAuthPayload;
         address nttManager;
         address wormhole;
         address owner;
@@ -204,11 +205,21 @@ library MigrationInit {
         outboundCfg[0] = OFTAdapterLike.RateLimitConfig(p.solEid, p.rl.outboundWindow, p.rl.outboundLimit);
         OFTAdapterLike(p.oftAdapter).setRateLimits(inboundCfg, outboundCfg);
         
+        uint256 fee = WormholeLike(p.wormhole).messageFee();
+        require(fee <= p.maxFee, "MigrationInit/exceeds-max-fee"); 
+
         // Transfer Mint Authority
         _publishWHMessage({
             wormhole: p.wormhole,
-            maxFee:   p.maxFee,
-            payload:  p.payload
+            fee:      fee,
+            payload:  p.transferMintAuthPayload
+        });
+
+        // Transfer Freeze Authority
+        _publishWHMessage({
+            wormhole: p.wormhole,
+            fee:      fee,
+            payload:  p.transferFreezeAuthPayload
         });
     }
 
@@ -219,21 +230,23 @@ library MigrationInit {
         bytes32 newGovProgramId,
         RateLimitsParams memory rl,
         uint256 maxFee,
-        bytes memory payload
+        bytes memory transferMintAuthPayload,
+        bytes memory transferFreezeAuthPayload
     ) internal {
         MigrationStep1Params memory p = MigrationStep1Params({
-            oftAdapter:      oftAdapter,
-            oftProgramId:    oftProgramId,
-            govOapp:         govOapp,
-            newGovProgramId: newGovProgramId,
-            rl:              rl,
-            maxFee:          maxFee,
-            payload:         payload,
-            nttManager:      NTT_MANAGER,
-            wormhole:        WORMHOLE_CORE_BRIDGE,
-            owner:           LOG.getAddress("MCD_PAUSE_PROXY"),
-            endpoint:        ETH_LZ_ENDPOINT,
-            solEid:          SOL_EID
+            oftAdapter:                oftAdapter,
+            oftProgramId:              oftProgramId,
+            govOapp:                   govOapp,
+            newGovProgramId:           newGovProgramId,
+            rl:                        rl,
+            maxFee:                    maxFee,
+            transferMintAuthPayload:   transferMintAuthPayload,
+            transferFreezeAuthPayload: transferFreezeAuthPayload,
+            nttManager:                NTT_MANAGER,
+            wormhole:                  WORMHOLE_CORE_BRIDGE,
+            owner:                     LOG.getAddress("MCD_PAUSE_PROXY"),
+            endpoint:                  ETH_LZ_ENDPOINT,
+            solEid:                    SOL_EID
         });
         initMigrationStep1(p);
     }
