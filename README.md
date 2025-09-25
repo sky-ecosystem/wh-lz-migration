@@ -17,7 +17,7 @@ After the execution of Spell 0, we check if there are any pending transfers in t
 
 If there are any in-flight transfers that still need to be relayed to the other side of the bridge after the execution of Spell 0, those might need to be manually relayed before Spell 1 is executed.
 
-Prior to the execution of Spell 1, the new LZ Governance OApp and the new LZ USDS Token bridge will have been deployed and configured (including setting its owner, delegate, peer, and enforced options). The Solana side of the LZ USDS Token bridge will already have had its rate limit configuration set to its intended non-zero value, and will thereby have been effectively already activated. The Ethereum side of the LZ USDS Token bridge will have its rate limit configuration set to zero (it will be set to a non-zero value in Spell 1, see below). Users are highly advised to refrain from using the bridge before Spell 1 has been executed.
+Prior to the execution of Spell 1, the new LZ Governance OApp and the new LZ USDS Token bridge will have been deployed and configured (including setting its owner, delegate, peer, and enforced options. All these parameters are assumed to have been reviewed by Sky). The Solana side of the LZ USDS Token bridge will already have had its rate limit configuration set to its intended non-zero value, and will thereby have been effectively already activated. The Ethereum side of the LZ USDS Token bridge will have its rate limit configuration set to zero (it will be set to a non-zero value in Spell 1, see below). Users are highly advised to refrain from using the bridge before Spell 1 has been executed.
 
 ### Spell 1
 
@@ -32,7 +32,7 @@ Each of the two spells above requires calling a dedicated init function in the l
 
 ## sUSDS initialization
 
-The library also provides an init function to activate the sUSDS LZ Bridge. This is assumed to be used after the migration steps described above have been completed. Before initializing the sUSDS LZ Bridge, the bridge will have been deployed and configured (including setting its owner, delegate, peer, and enforced options). The Solana side of the bridge will already have had its rate limit configuration set to its intended non-zero value, and will thereby have been effectively already activated. The Ethereum side of the bridge will have its rate limit configuration set to zero. As with the USDS bridge, users are highly advised to refrain from using the sUSDS bridge before its initialization function has been executed.
+The library also provides an init function to activate the sUSDS LZ Bridge. This is assumed to be used after the migration steps described above have been completed. Before initializing the sUSDS LZ Bridge, the bridge will have been deployed and configured (including setting its owner, delegate, peer, and enforced options. All these parameters are assumed to have been reviewed by Sky). The Solana side of the bridge will already have had its rate limit configuration set to its intended non-zero value, and will thereby have been effectively already activated. The Ethereum side of the bridge will have its rate limit configuration set to zero. As with the USDS bridge, users are highly advised to refrain from using the sUSDS bridge before its initialization function has been executed.
 
 ## Dependencies
 

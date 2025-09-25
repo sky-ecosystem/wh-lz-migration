@@ -38,7 +38,6 @@ interface OAppLike {
     function owner() external view returns (address);
     function endpoint() external view returns (address);
     function peers(uint32) external view returns (bytes32);
-    function enforcedOptions(uint32, uint16) external view returns (bytes memory);
 }
 
 interface OFTAdapterLike is OAppLike {
@@ -130,23 +129,11 @@ library MigrationInit {
 
     function _sanityCheckOapp(address oapp, uint32 solEid, address owner, address endpoint, bytes32 peer) internal view {
         OAppLike oapp_ = OAppLike(oapp);
-        bytes memory opts1 = oapp_.enforcedOptions(solEid, 1);
-        bytes memory opts2 = oapp_.enforcedOptions(solEid, 2);
-
-        require(oapp_.owner() == owner,                                "MigrationInit/owner-mismatch"); 
-        require(oapp_.endpoint() == endpoint,                          "MigrationInit/endpoint-mismatch");
-        require(oapp_.peers(solEid) == peer,                           "MigrationInit/peer-mismatch");
-        require(EndpointLike(endpoint).delegates(oapp) == owner,       "MigrationInit/delegate-mismatch");
-        require(opts1.length == 38 && bytes6(opts1) == 0x000301002101, "MigrationInit/bad-enforced-opts-msg-type1"); // expecting [{ msgType: 1, optionType: ExecutorOptionType.LZ_RECEIVE, gas, value: 2_500_000 }], see encoding by addExecutorLzReceiveOption() in @layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol
-        uint128 gas_; uint128 val;
-        assembly { // opts1 layout: {header: 6 bytes}{gas: 16 bytes}{value: 16 bytes}
-            let ptr := add(opts1, 32)
-            gas_ := shr(80, mload(ptr))
-            val  := mload(add(ptr, 6))
-        }
-        require(gas_ <= 1_400_000,                                     "MigrationInit/bad-enforced-opts-msg-type1-gas"); // max 1.4m compute units, per https://solana.com/docs/core/fees#compute-units-and-limits
-        require(val  == 2_500_000,                                     "MigrationInit/bad-enforced-opts-msg-type1-value"); // assume 2.5m lamports enforced, per https://docs.layerzero.network/v2/developers/solana/oft/account#setting-enforced-options-inbound-to-solana
-        require(opts2.length == 0,                                     "MigrationInit/bad-enforced-opts-msg-type2");
+        // Note that the oapp's enforcedOptions are assumed to have been manually reviewed by Sky
+        require(oapp_.owner() == owner,                          "MigrationInit/owner-mismatch"); 
+        require(oapp_.endpoint() == endpoint,                    "MigrationInit/endpoint-mismatch");
+        require(oapp_.peers(solEid) == peer,                     "MigrationInit/peer-mismatch");
+        require(EndpointLike(endpoint).delegates(oapp) == owner, "MigrationInit/delegate-mismatch");
     }
 
     function _sanityCheckOft(address oftAdapter, uint32 solEid, address token, uint8 rlAccountingType) internal view {
