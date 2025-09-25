@@ -21,9 +21,9 @@ import { DssTest } from "dss-test/DssTest.sol";
 import { MigrationDeploy } from "deploy/MigrationDeploy.sol";
 import { MigrationInit } from "deploy/MigrationInit.sol";
 import { NttManager } from "lib/sky-ntt-migration/evm/src/NttManager/NttManager.sol";
-import { OFTAdapter } from "lib/sky-oapp-oft/contracts/OFTAdapter.sol";
-import { DoubleSidedRateLimiter } from "lib/sky-oapp-oft/contracts/oft-dsrl/DoubleSidedRateLimiter.sol";
-import { GovernanceControllerOApp } from "lib/sky-oapp-gov/contracts/GovernanceControllerOApp.sol";
+import { SkyOFTAdapter } from "lib/sky-oapp-oft/contracts/SkyOFTAdapter.sol";
+import { ISkyRateLimiter } from "lib/sky-oapp-oft/contracts/interfaces/ISkyRateLimiter.sol";
+import { GovernanceOAppSender } from "lib/sky-oapp-gov/contracts/GovernanceOAppSender.sol";
 
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import { IOAppOptionsType3, EnforcedOptionParam } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppOptionsType3.sol";
@@ -46,24 +46,18 @@ interface WormholeLike {
     function nextSequence(address) external view returns (uint64);
 }
 
-interface EndpointLike {
-    function outboundNonce(address, uint32, bytes32) external view returns (uint64);
-    function getSendLibrary(address, uint32) external view returns (address);
-}
-
 contract MigrationTest is DssTest {
     using OptionsBuilder for bytes;
 
     ChainlogLike public chainlog = ChainlogLike(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
     NttManager   public nttManager = NttManager(0x7d4958454a3f520bDA8be764d06591B054B0bf33);
     WormholeLike public wormhole = WormholeLike(0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B);
-    EndpointLike public endpoint = EndpointLike(0x1a44076050125825900e736c501f859c50fE728c);
 
     event LogMessagePublished(address indexed sender, uint64 sequence, uint32 nonce, bytes payload, uint8 consistencyLevel);
-    event PacketSent(bytes encodedPayload, bytes options, address sendLibrary);
 
     address public pauseProxy;
     address public usds;
+    address public susds;
     address public nttImpV2;
 
     bytes32 public oftProgramId     = bytes32(uint256(0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f));
@@ -74,55 +68,41 @@ contract MigrationTest is DssTest {
 
         pauseProxy = chainlog.getAddress("MCD_PAUSE_PROXY");
         usds       = chainlog.getAddress("USDS");
+        susds      = chainlog.getAddress("SUSDS");
 
         nttImpV2 = MigrationDeploy.deployMigration();
     }
 
     function initMigrationStep0(
         address nttManagerImpV2,
-        uint256 maxWHFee,
+        uint256 maxFee,
         bytes memory payload
     ) external {
         vm.startPrank(pauseProxy);
-        MigrationInit.initMigrationStep0(nttManagerImpV2, maxWHFee, payload);
+        MigrationInit.initMigrationStep0(nttManagerImpV2, maxFee, payload);
         vm.stopPrank();
     }
 
     function initMigrationStep1(
-        uint256 maxWHFee,
-        bytes memory payload
-    ) external {
-        vm.startPrank(pauseProxy);
-        MigrationInit.initMigrationStep1(maxWHFee, payload);
-        vm.stopPrank();
-    }
-
-    function initMigrationStep2(
         address oftAdapter,
         bytes32 oftProgramId_,
         address govOapp,
         bytes32 newGovProgramId_,
-        uint128 gas,
-        uint128 value,
         MigrationInit.RateLimitsParams memory rl,
-        uint256 maxWHFee,
-        uint256 maxLZFee,
-        bytes memory whPayload,
-        bytes memory lzPayload
+        uint256 maxFee,
+        bytes memory transferMintAuthPayload,
+        bytes memory transferFreezeAuthPayload
     ) external {
         vm.startPrank(pauseProxy);
-        MigrationInit.initMigrationStep2(
+        MigrationInit.initMigrationStep1(
             oftAdapter,
             oftProgramId_,
             govOapp,
             newGovProgramId_,
-            gas,
-            value,
             rl,
-            maxWHFee,
-            maxLZFee,
-            whPayload,
-            lzPayload
+            maxFee,
+            transferMintAuthPayload,
+            transferFreezeAuthPayload
         );
         vm.stopPrank();
     }
@@ -136,17 +116,6 @@ contract MigrationTest is DssTest {
         this.initMigrationStep0(nttImpV2, 0, "123");
 
         vm.prank(pauseProxy); nttManager.migrateLockedTokens(address(this));
-    }
-
-    function testMigrationStep1() public {
-        this.initMigrationStep0(nttImpV2, 0, "");
-        assertFalse(nttManager.isSendPaused());
-
-        vm.expectEmit(true, true, true, true, address(wormhole));
-        emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy), 0, "234", 202);
-        this.initMigrationStep1(0, "234");
-
-        assertTrue(nttManager.isSendPaused());
     }
 
     function _initOapp(address oapp, bytes32 peer) internal {
@@ -181,20 +150,14 @@ contract MigrationTest is DssTest {
         IOAppOptionsType3(oapp).setEnforcedOptions(opts);
     }
 
-    function testMigrationStep2() public {
-        OFTAdapter oftAdapter = new OFTAdapter(usds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
-        GovernanceControllerOApp govOapp = new GovernanceControllerOApp({
+    function testMigrationStep1() public {
+        SkyOFTAdapter oftAdapter = new SkyOFTAdapter(usds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
+        GovernanceOAppSender govOapp = new GovernanceOAppSender({
             _endpoint: MigrationInit.ETH_LZ_ENDPOINT,
-            _delegate: pauseProxy,
-            _addInitialValidTarget: false,
-            _initialValidTargetSrcEid: 0,
-            _initialValidTargetOriginCaller: bytes32(0),
-            _initialValidTargetGovernedContract: address(0)
+            _owner: pauseProxy
         });
         this.initMigrationStep0(nttImpV2, 0, "");
-        this.initMigrationStep1(0, "");
         vm.startPrank(pauseProxy);
-        govOapp.addValidCaller(pauseProxy);
         _initOapp(address(govOapp), newGovProgramId);
         _initOapp(address(oftAdapter), oftProgramId);
         vm.stopPrank();
@@ -221,7 +184,7 @@ contract MigrationTest is DssTest {
         MessagingFee memory msgFee = oftAdapter.quoteSend(sendParams, false);
         deal(usds, address(this), 1 ether, true);
         TokenLike(usds).approve(address(oftAdapter), 1 ether);
-        vm.expectRevert(DoubleSidedRateLimiter.RateLimitExceeded.selector);
+        vm.expectRevert(ISkyRateLimiter.RateLimitExceeded.selector);
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
 
         MigrationInit.RateLimitsParams memory rl = MigrationInit.RateLimitsParams({
@@ -232,40 +195,71 @@ contract MigrationTest is DssTest {
             rlAccountingType: 0
         });
 
-        uint64 newNonce = endpoint.outboundNonce(address(govOapp), 30168, newGovProgramId) + 1;
         vm.expectEmit(true, true, true, true, address(wormhole));
         emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy), 0, "456", 202);
-        vm.expectEmit(true, true, true, true, address(endpoint));
-        emit PacketSent(
-            abi.encodePacked(
-                uint8(1), // PACKET_VERSION
-                newNonce,
-                uint32(30101),
-                uint256(uint160(address(govOapp))),
-                uint32(30168),
-                newGovProgramId,
-                keccak256(abi.encodePacked(newNonce, uint32(30101), uint256(uint160(address(govOapp))), uint32(30168), newGovProgramId)),
-                uint8(2), bytes32(uint256(uint160(pauseProxy)))
-            ),
-            govOapp.enforcedOptions(30168, 1).addExecutorLzReceiveOption(1_200_000, 0),
-            endpoint.getSendLibrary(address(govOapp), 30168)
-        );
-        this.initMigrationStep2({
+        vm.expectEmit(true, true, true, true, address(wormhole));
+        emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy) + 1, 0, "789", 202);
+        this.initMigrationStep1({
             oftAdapter: address(oftAdapter),
             oftProgramId_: oftProgramId,
             govOapp: address(govOapp),
             newGovProgramId_: newGovProgramId,
-            gas: 1_200_000,
-            value: 0,
             rl: rl,
-            maxWHFee: 0,
-            maxLZFee: 0.05 ether,
-            whPayload: "456",
-            lzPayload: abi.encodePacked(uint8(2), bytes32(uint256(uint160(pauseProxy))))
+            maxFee: 0,
+            transferMintAuthPayload: "456",
+            transferFreezeAuthPayload: "789"
         });
 
         assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);
         assertEq(TokenLike(usds).balanceOf(address(oftAdapter)), escrowed);
+        (,uint48 outWindow2,,uint256 outLimit2) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
+        (,uint48  inWindow2,,uint256  inLimit2) = oftAdapter.inboundRateLimits(MigrationInit.SOL_EID);
+        assertEq(outWindow2, 1 days);
+        assertEq(outLimit2, 1_000_000 ether);
+        assertEq(inWindow2, 1 days);
+        assertEq(inLimit2, 1_000_000 ether);
+        oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
+    }
+
+    function testInitSusdsBridge() public {
+        SkyOFTAdapter oftAdapter = new SkyOFTAdapter(susds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
+        vm.startPrank(pauseProxy);
+        _initOapp(address(oftAdapter), oftProgramId);
+        vm.stopPrank();
+
+        (,uint48 outWindow,,uint256 outLimit) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
+        (,uint48  inWindow,,uint256  inLimit) = oftAdapter.inboundRateLimits(MigrationInit.SOL_EID);
+        assertEq(outWindow, 0);
+        assertEq(outLimit, 0);
+        assertEq(inWindow, 0);
+        assertEq(inLimit, 0);
+        SendParam memory sendParams = SendParam({
+            dstEid: MigrationInit.SOL_EID,
+            to: bytes32(uint256(0xdede)),
+            amountLD: 1 ether,
+            minAmountLD: 1 ether,
+            extraOptions: bytes(""),
+            composeMsg: bytes(""),
+            oftCmd: bytes("")
+        });
+        MessagingFee memory msgFee = oftAdapter.quoteSend(sendParams, false);
+        deal(susds, address(this), 1 ether, true);
+        TokenLike(susds).approve(address(oftAdapter), 1 ether);
+        vm.expectRevert(ISkyRateLimiter.RateLimitExceeded.selector);
+        oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
+
+        MigrationInit.RateLimitsParams memory rl = MigrationInit.RateLimitsParams({
+            outboundWindow:   1 days,
+            outboundLimit:    1_000_000 ether,
+            inboundWindow:    1 days,
+            inboundLimit:     1_000_000 ether,
+            rlAccountingType: 0
+        });
+
+        vm.startPrank(pauseProxy);
+        MigrationInit.initSusdsBridge(address(oftAdapter), oftProgramId, rl);
+        vm.stopPrank();
+
         (,uint48 outWindow2,,uint256 outLimit2) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
         (,uint48  inWindow2,,uint256  inLimit2) = oftAdapter.inboundRateLimits(MigrationInit.SOL_EID);
         assertEq(outWindow2, 1 days);
