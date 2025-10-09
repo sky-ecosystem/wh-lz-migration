@@ -167,6 +167,7 @@ library MigrationInit {
         uint256 maxFee;
         bytes transferMintAuthPayload;
         bytes transferFreezeAuthPayload;
+        bytes transferMetadataUpdateAuthPayload;
         address nttManager;
         address wormhole;
         address owner;
@@ -208,6 +209,13 @@ library MigrationInit {
             fee:      fee,
             payload:  p.transferFreezeAuthPayload
         });
+
+        // Transfer Metadata Update Authority
+        _publishWHMessage({
+            wormhole: p.wormhole,
+            fee:      fee,
+            payload:  p.transferMetadataUpdateAuthPayload
+        });
     }
 
     function initMigrationStep1(
@@ -218,22 +226,24 @@ library MigrationInit {
         RateLimitsParams memory rl,
         uint256 maxFee,
         bytes memory transferMintAuthPayload,
-        bytes memory transferFreezeAuthPayload
+        bytes memory transferFreezeAuthPayload,
+        bytes memory transferMetadataUpdateAuthPayload
     ) internal {
         MigrationStep1Params memory p = MigrationStep1Params({
-            oftAdapter:                oftAdapter,
-            oftProgramId:              oftProgramId,
-            govOapp:                   govOapp,
-            newGovProgramId:           newGovProgramId,
-            rl:                        rl,
-            maxFee:                    maxFee,
-            transferMintAuthPayload:   transferMintAuthPayload,
-            transferFreezeAuthPayload: transferFreezeAuthPayload,
-            nttManager:                NTT_MANAGER,
-            wormhole:                  WORMHOLE_CORE_BRIDGE,
-            owner:                     LOG.getAddress("MCD_PAUSE_PROXY"),
-            endpoint:                  ETH_LZ_ENDPOINT,
-            solEid:                    SOL_EID
+            oftAdapter:                        oftAdapter,
+            oftProgramId:                      oftProgramId,
+            govOapp:                           govOapp,
+            newGovProgramId:                   newGovProgramId,
+            rl:                                rl,
+            maxFee:                            maxFee,
+            transferMintAuthPayload:           transferMintAuthPayload,
+            transferFreezeAuthPayload:         transferFreezeAuthPayload,
+            transferMetadataUpdateAuthPayload: transferMetadataUpdateAuthPayload,
+            nttManager:                        NTT_MANAGER,
+            wormhole:                          WORMHOLE_CORE_BRIDGE,
+            owner:                             LOG.getAddress("MCD_PAUSE_PROXY"),
+            endpoint:                          ETH_LZ_ENDPOINT,
+            solEid:                            SOL_EID
         });
         initMigrationStep1(p);
     }

@@ -91,7 +91,8 @@ contract MigrationTest is DssTest {
         MigrationInit.RateLimitsParams memory rl,
         uint256 maxFee,
         bytes memory transferMintAuthPayload,
-        bytes memory transferFreezeAuthPayload
+        bytes memory transferFreezeAuthPayload,
+        bytes memory transferMetadataUpdateAuthPayload
     ) external {
         vm.startPrank(pauseProxy);
         MigrationInit.initMigrationStep1(
@@ -102,7 +103,8 @@ contract MigrationTest is DssTest {
             rl,
             maxFee,
             transferMintAuthPayload,
-            transferFreezeAuthPayload
+            transferFreezeAuthPayload,
+            transferMetadataUpdateAuthPayload
         );
         vm.stopPrank();
     }
@@ -207,7 +209,8 @@ contract MigrationTest is DssTest {
             rl: rl,
             maxFee: 0,
             transferMintAuthPayload: "456",
-            transferFreezeAuthPayload: "789"
+            transferFreezeAuthPayload: "789",
+            transferMetadataUpdateAuthPayload: "123"
         });
 
         assertEq(TokenLike(usds).balanceOf(address(nttManager)), 0);
