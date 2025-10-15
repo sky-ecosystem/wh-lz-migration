@@ -70,7 +70,7 @@ library MigrationInit {
 
     function _publishWHMessage(address wormhole, uint256 fee, bytes memory payload) internal {
         WormholeLike(wormhole).publishMessage{value: fee}({
-            nonce: 0, 
+            nonce: 0,
             payload: payload,
             consistencyLevel: 202 // "Finalized" (~19 minutes - see https://wormhole.com/docs/build/reference/consistency-levels/)
         });
@@ -101,7 +101,7 @@ library MigrationInit {
 
         // Upgrade Solana NTT Manager
         uint256 fee = WormholeLike(wormhole).messageFee();
-        require(fee <= maxFee, "MigrationInit/exceeds-max-fee"); 
+        require(fee <= maxFee, "MigrationInit/exceeds-max-fee");
         _publishWHMessage({
             wormhole: wormhole,
             fee:      fee,
@@ -130,7 +130,7 @@ library MigrationInit {
     function _sanityCheckOapp(address oapp, uint32 solEid, address owner, address endpoint, bytes32 peer) internal view {
         OAppLike oapp_ = OAppLike(oapp);
         // Note that the oapp's enforcedOptions are assumed to have been manually reviewed by Sky
-        require(oapp_.owner() == owner,                          "MigrationInit/owner-mismatch"); 
+        require(oapp_.owner() == owner,                          "MigrationInit/owner-mismatch");
         require(oapp_.endpoint() == endpoint,                    "MigrationInit/endpoint-mismatch");
         require(oapp_.peers(solEid) == peer,                     "MigrationInit/peer-mismatch");
         require(EndpointLike(endpoint).delegates(oapp) == owner, "MigrationInit/delegate-mismatch");
@@ -194,7 +194,7 @@ library MigrationInit {
         OFTAdapterLike(p.oftAdapter).setRateLimits(inboundCfg, outboundCfg);
         
         uint256 fee = WormholeLike(p.wormhole).messageFee();
-        require(fee <= p.maxFee, "MigrationInit/exceeds-max-fee"); 
+        require(fee <= p.maxFee, "MigrationInit/exceeds-max-fee");
 
         // Transfer Mint Authority
         _publishWHMessage({
