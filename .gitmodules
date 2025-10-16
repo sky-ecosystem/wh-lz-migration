@@ -8,8 +8,4 @@
 [submodule "lib/sky-oapp-oft"]
 	path = lib/sky-oapp-oft
 	url = https://github.com/sky-ecosystem/sky-oapp-oft
-	branch = riley/oft-changes
-[submodule "lib/sky-oapp-gov"]
-	path = lib/sky-oapp-gov
-	url = https://github.com/sky-ecosystem/sky-oapp-oft
-	branch = riley/governance-changes
+	branch = main

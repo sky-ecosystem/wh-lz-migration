@@ -23,7 +23,7 @@ import { MigrationInit } from "deploy/MigrationInit.sol";
 import { NttManager } from "lib/sky-ntt-migration/evm/src/NttManager/NttManager.sol";
 import { SkyOFTAdapter } from "lib/sky-oapp-oft/contracts/SkyOFTAdapter.sol";
 import { ISkyRateLimiter } from "lib/sky-oapp-oft/contracts/interfaces/ISkyRateLimiter.sol";
-import { GovernanceOAppSender } from "lib/sky-oapp-gov/contracts/GovernanceOAppSender.sol";
+import { GovernanceOAppSender } from "lib/sky-oapp-oft/contracts/GovernanceOAppSender.sol";
 
 import { IOAppCore } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import { IOAppOptionsType3, EnforcedOptionParam } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppOptionsType3.sol";

@@ -39,8 +39,7 @@ The library also provides an init function to activate the sUSDS LZ Bridge. This
 The `lib` directory contains the following dependencies relevant for the migration:
 
 - `sky-ntt-migration`: contains the new NTT implementations used to upgrade the NTT Managers in Spell 0.
-- `sky-oapp-gov`: points to [@sky-ecosystem/sky-oapp-oft#riley/governance-changes](https://github.com/sky-ecosystem/sky-oapp-oft/tree/riley/governance-changes) and contains the EVM and SVM Governance OApp code.
-- `sky-oapp-oft`: points to [@sky-ecosystem/sky-oapp-oft#riley/oft-changes](https://github.com/sky-ecosystem/sky-oapp-oft/tree/riley/oft-changes) and contains the EVM LZ Token Bridge code.
+- `sky-oapp-oft`: contains the LZ Token Bridge and Governance OApp code.
 
 ## EVM Tests
 

@@ -31,10 +31,8 @@ jobs:
       - name: Set up pnpm
         run: npm install -g pnpm
 
-      - name: Install LZ deps in submodules
-        run: |
-          cd lib/sky-oapp-gov && pnpm install && cd -
-          cd lib/sky-oapp-oft && pnpm install && cd -
+      - name: Install LZ deps
+        run: cd lib/sky-oapp-oft && pnpm install && cd -
         id: lz_deps_install
 
       - name: Run Forge build
