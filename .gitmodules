@@ -8,4 +8,4 @@
 [submodule "lib/sky-oapp-oft"]
 	path = lib/sky-oapp-oft
 	url = https://github.com/sky-ecosystem/sky-oapp-oft
-	branch = main
+	branch = riley/final-changes
