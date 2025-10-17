@@ -160,9 +160,9 @@ library MigrationInit {
 
     struct MigrationStep1Params {
         address oftAdapter;
-        bytes32 oftStore;
+        bytes32 oftPeer;
         address govOapp; 
-        bytes32 newGov;
+        bytes32 govPeer;
         RateLimitsParams rl;
         uint256 maxFee;
         bytes transferMintAuthPayload;
@@ -179,8 +179,8 @@ library MigrationInit {
         MigrationStep1Params memory p
     ) internal {
         // Sanity checks
-        _sanityCheckOapp(p.oftAdapter, p.solEid, p.owner, p.endpoint, p.oftStore);
-        _sanityCheckOapp(p.govOapp,    p.solEid, p.owner, p.endpoint, p.newGov);
+        _sanityCheckOapp(p.oftAdapter, p.solEid, p.owner, p.endpoint, p.oftPeer);
+        _sanityCheckOapp(p.govOapp,    p.solEid, p.owner, p.endpoint, p.govPeer);
         _sanityCheckOft(p.oftAdapter, p.solEid, NttManagerLike(p.nttManager).token(), p.rl.rlAccountingType);
 
         // Migrated Locked Tokens
@@ -220,9 +220,9 @@ library MigrationInit {
 
     function initMigrationStep1(
         address oftAdapter,
-        bytes32 oftStore,
+        bytes32 oftPeer,
         address govOapp,
-        bytes32 newGov,
+        bytes32 govPeer,
         RateLimitsParams memory rl,
         uint256 maxFee,
         bytes memory transferMintAuthPayload,
@@ -231,9 +231,9 @@ library MigrationInit {
     ) internal {
         MigrationStep1Params memory p = MigrationStep1Params({
             oftAdapter:                        oftAdapter,
-            oftStore:                          oftStore,
+            oftPeer:                           oftPeer,
             govOapp:                           govOapp,
-            newGov:                            newGov,
+            govPeer:                           govPeer,
             rl:                                rl,
             maxFee:                            maxFee,
             transferMintAuthPayload:           transferMintAuthPayload,
@@ -250,11 +250,11 @@ library MigrationInit {
 
     function initSusdsBridge(
         address oftAdapter,
-        bytes32 oftStore,
+        bytes32 oftPeer,
         RateLimitsParams memory rl
     ) internal {
         // Sanity checks
-        _sanityCheckOapp(oftAdapter, SOL_EID, LOG.getAddress("MCD_PAUSE_PROXY"), ETH_LZ_ENDPOINT, oftStore);
+        _sanityCheckOapp(oftAdapter, SOL_EID, LOG.getAddress("MCD_PAUSE_PROXY"), ETH_LZ_ENDPOINT, oftPeer);
         _sanityCheckOft(oftAdapter, SOL_EID, LOG.getAddress("SUSDS"), rl.rlAccountingType);
 
         // Activate sUSDS Ethereum LZ Bridge
