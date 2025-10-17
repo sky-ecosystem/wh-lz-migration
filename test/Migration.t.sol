@@ -60,8 +60,8 @@ contract MigrationTest is DssTest {
     address public susds;
     address public nttImpV2;
 
-    bytes32 public oftProgramId     = bytes32(uint256(0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f));
-    bytes32 public newGovProgramId  = bytes32(uint256(0xb055b055b055b055b055b055b055b055b055b055b055b055b055b055b055b055));
+    bytes32 public oftStore = bytes32(uint256(0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f));
+    bytes32 public newGov   = bytes32(uint256(0xb055b055b055b055b055b055b055b055b055b055b055b055b055b055b055b055));
 
     function setUp() public {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
@@ -85,9 +85,9 @@ contract MigrationTest is DssTest {
 
     function initMigrationStep1(
         address oftAdapter,
-        bytes32 oftProgramId_,
+        bytes32 oftStore_,
         address govOapp,
-        bytes32 newGovProgramId_,
+        bytes32 newGov_,
         MigrationInit.RateLimitsParams memory rl,
         uint256 maxFee,
         bytes memory transferMintAuthPayload,
@@ -97,9 +97,9 @@ contract MigrationTest is DssTest {
         vm.startPrank(pauseProxy);
         MigrationInit.initMigrationStep1(
             oftAdapter,
-            oftProgramId_,
+            oftStore_,
             govOapp,
-            newGovProgramId_,
+            newGov_,
             rl,
             maxFee,
             transferMintAuthPayload,
@@ -160,8 +160,8 @@ contract MigrationTest is DssTest {
         });
         this.initMigrationStep0(nttImpV2, 0, "");
         vm.startPrank(pauseProxy);
-        _initOapp(address(govOapp), newGovProgramId);
-        _initOapp(address(oftAdapter), oftProgramId);
+        _initOapp(address(govOapp), newGov);
+        _initOapp(address(oftAdapter), oftStore);
         vm.stopPrank();
 
         uint256 escrowed = TokenLike(usds).balanceOf(address(nttManager));
@@ -206,9 +206,9 @@ contract MigrationTest is DssTest {
         emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy) + 2, 0, "123", 202);
         this.initMigrationStep1({
             oftAdapter: address(oftAdapter),
-            oftProgramId_: oftProgramId,
+            oftStore_: oftStore,
             govOapp: address(govOapp),
-            newGovProgramId_: newGovProgramId,
+            newGov_: newGov,
             rl: rl,
             maxFee: 0,
             transferMintAuthPayload: "456",
@@ -230,7 +230,7 @@ contract MigrationTest is DssTest {
     function testInitSusdsBridge() public {
         SkyOFTAdapter oftAdapter = new SkyOFTAdapter(susds, MigrationInit.ETH_LZ_ENDPOINT, pauseProxy);
         vm.startPrank(pauseProxy);
-        _initOapp(address(oftAdapter), oftProgramId);
+        _initOapp(address(oftAdapter), oftStore);
         vm.stopPrank();
 
         (,uint48 outWindow,,uint256 outLimit) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
@@ -264,7 +264,7 @@ contract MigrationTest is DssTest {
         });
 
         vm.startPrank(pauseProxy);
-        MigrationInit.initSusdsBridge(address(oftAdapter), oftProgramId, rl);
+        MigrationInit.initSusdsBridge(address(oftAdapter), oftStore, rl);
         vm.stopPrank();
 
         (,uint48 outWindow2,,uint256 outLimit2) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
