@@ -190,10 +190,11 @@ contract MigrationTest is DssTest {
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
 
         MigrationInit.RateLimitsParams memory rl = MigrationInit.RateLimitsParams({
-            outboundWindow:   1 days,
-            outboundLimit:    1_000_000 ether,
-            inboundWindow:    1 days,
-            inboundLimit:     1_000_000 ether,
+            // using different values for inbound and outbound only for the sake of a more rigorous test, not expecting such values to be used in practice
+            outboundWindow:   1.01 days,
+            outboundLimit:    1_000_001 ether,
+            inboundWindow:    1.02 days,
+            inboundLimit:     1_000_002 ether,
             rlAccountingType: 0
         });
 
@@ -201,6 +202,8 @@ contract MigrationTest is DssTest {
         emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy), 0, "456", 202);
         vm.expectEmit(true, true, true, true, address(wormhole));
         emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy) + 1, 0, "789", 202);
+        vm.expectEmit(true, true, true, true, address(wormhole));
+        emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy) + 2, 0, "123", 202);
         this.initMigrationStep1({
             oftAdapter: address(oftAdapter),
             oftProgramId_: oftProgramId,
@@ -217,10 +220,10 @@ contract MigrationTest is DssTest {
         assertEq(TokenLike(usds).balanceOf(address(oftAdapter)), escrowed);
         (,uint48 outWindow2,,uint256 outLimit2) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
         (,uint48  inWindow2,,uint256  inLimit2) = oftAdapter.inboundRateLimits(MigrationInit.SOL_EID);
-        assertEq(outWindow2, 1 days);
-        assertEq(outLimit2, 1_000_000 ether);
-        assertEq(inWindow2, 1 days);
-        assertEq(inLimit2, 1_000_000 ether);
+        assertEq(outWindow2, 1.01 days);
+        assertEq(outLimit2, 1_000_001 ether);
+        assertEq(inWindow2, 1.02 days);
+        assertEq(inLimit2, 1_000_002 ether);
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
     }
 
@@ -252,10 +255,11 @@ contract MigrationTest is DssTest {
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
 
         MigrationInit.RateLimitsParams memory rl = MigrationInit.RateLimitsParams({
-            outboundWindow:   1 days,
-            outboundLimit:    1_000_000 ether,
-            inboundWindow:    1 days,
-            inboundLimit:     1_000_000 ether,
+            // using different values for inbound and outbound only for the sake of a more rigorous test, not expecting such values to be used in practice
+            outboundWindow:   1.01 days,
+            outboundLimit:    1_000_001 ether,
+            inboundWindow:    1.02 days,
+            inboundLimit:     1_000_002 ether,
             rlAccountingType: 0
         });
 
@@ -265,10 +269,10 @@ contract MigrationTest is DssTest {
 
         (,uint48 outWindow2,,uint256 outLimit2) = oftAdapter.outboundRateLimits(MigrationInit.SOL_EID);
         (,uint48  inWindow2,,uint256  inLimit2) = oftAdapter.inboundRateLimits(MigrationInit.SOL_EID);
-        assertEq(outWindow2, 1 days);
-        assertEq(outLimit2, 1_000_000 ether);
-        assertEq(inWindow2, 1 days);
-        assertEq(inLimit2, 1_000_000 ether);
+        assertEq(outWindow2, 1.01 days);
+        assertEq(outLimit2, 1_000_001 ether);
+        assertEq(inWindow2, 1.02 days);
+        assertEq(inLimit2, 1_000_002 ether);
         oftAdapter.send{value: msgFee.nativeFee}(sendParams, msgFee, address(this));
     }
 }
