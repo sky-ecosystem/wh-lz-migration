@@ -43,6 +43,7 @@ interface TokenLike {
 }
 
 interface WormholeLike {
+    function messageFee() external view returns (uint256);
     function nextSequence(address) external view returns (uint64);
 }
 
@@ -112,6 +113,11 @@ contract MigrationTest is DssTest {
     function testMigrationStep0() public {
         vm.expectRevert(bytes(""));
         vm.prank(pauseProxy); nttManager.migrateLockedTokens(address(this));
+
+        vm.mockCall(address(wormhole), abi.encodeWithSelector(WormholeLike.messageFee.selector), abi.encode(1));
+        vm.expectRevert("MigrationInit/exceeds-max-fee");
+        this.initMigrationStep0(nttImpV2, 0, "123");
+        vm.clearMockedCalls();
 
         vm.expectEmit(true, true, true, true, address(wormhole));
         emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy), 0, "123", 202);
@@ -197,6 +203,21 @@ contract MigrationTest is DssTest {
             inboundLimit:     1_000_002 ether,
             rlAccountingType: 0
         });
+
+        vm.mockCall(address(wormhole), abi.encodeWithSelector(WormholeLike.messageFee.selector), abi.encode(1));
+        vm.expectRevert("MigrationInit/exceeds-max-fee");
+        this.initMigrationStep1({
+            oftAdapter: address(oftAdapter),
+            oftStore_: oftStore,
+            govOapp: address(govOapp),
+            newGov_: newGov,
+            rl: rl,
+            maxFee: 0,
+            transferMintAuthPayload: "456",
+            transferFreezeAuthPayload: "789",
+            transferMetadataUpdateAuthPayload: "123"
+        });
+        vm.clearMockedCalls();
 
         vm.expectEmit(true, true, true, true, address(wormhole));
         emit LogMessagePublished(pauseProxy, wormhole.nextSequence(pauseProxy), 0, "456", 202);
