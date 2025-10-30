@@ -1,6 +1,11 @@
-[submodule "lib/forge-std"]
-	path = lib/forge-std
-	url = https://github.com/foundry-rs/forge-std
 [submodule "lib/dss-test"]
 	path = lib/dss-test
-	url = https://github.com/makerdao/dss-test
+	url = https://github.com/sky-ecosystem/dss-test
+[submodule "lib/sky-ntt-migration"]
+	path = lib/sky-ntt-migration
+	url = https://github.com/sky-ecosystem/sky-ntt-migration
+	branch = evm-oft-migration
+[submodule "lib/sky-oapp-oft"]
+	path = lib/sky-oapp-oft
+	url = https://github.com/sky-ecosystem/sky-oapp-oft
+	branch = riley/final-changes
