@@ -52,3 +52,14 @@ These tests cover the Ethereum side of the migration, but do not test any cross-
 ```
 forge test
 ```
+
+## Audits
+
+Audit reports are hosted on the auditors' public portfolio pages:
+
+| Auditor | Report | Date |
+| --- | --- | --- |
+| ChainSecurity | [Wormhole LayerZero Migration Library](https://www.chainsecurity.com/security-audit/wormhole-layerzero-migration-library/) | 2025-10-24 |
+| Cantina | [WH LZ Migration](https://cantina.xyz/portfolio/d65ef1bd-8c28-4d34-ab77-06a042128045) | 2025-10-22 |
+
+ChainSecurity reports are cumulative: each portfolio page hosts the latest version of the report, which covers all previously reviewed versions.
